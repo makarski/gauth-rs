@@ -1,0 +1,7 @@
+- [ ] move creating client to a constructor? or outside
+- [ ] provide dir name / file name for token from configuration
+- [ ] provide scopes from configuration
+- [ ] clean up prints and errors
+- [ ] clean up func namings
+- [ ] document funcs
+- [ ] add tests
