@@ -17,35 +17,76 @@ use credentials::OauthCredentials;
 mod errors;
 use errors::{Error, Result};
 
+use std::fs::{DirBuilder, File};
 use std::path;
 
 // Token configs
 const GRANT_TYPE: &str = "authorization_code";
-const ACCESS_TOKEN_FILE: &str = "access_token.json";
 
 #[derive(Deserialize, Serialize, Debug)]
 pub struct Token {
     pub access_token: String,
     pub expires_in: u32,
-    pub refresh_token: String,
+    pub refresh_token: Option<String>,
     pub scope: Option<String>,
     pub token_type: String,
 }
 
-pub fn access_token(
-    app_name: &String,
-    credentials_path: &path::Path,
-    scope: &str,
-) -> Result<Token> {
-    let tkn_filekey = token_filekey(app_name)?;
+impl Token {
+    fn filekeys(&self, app_name: &str) -> Result<Vec<path::PathBuf>> {
+        let mut keys = vec![access_token_filekey(app_name)?];
+
+        if self.is_refresh() {
+            keys.push(refresh_token_filekey(app_name)?);
+        }
+
+        Ok(keys)
+    }
+
+    fn is_refresh(&self) -> bool {
+        self.refresh_token.is_some()
+    }
+
+    fn save(self, app_name: &str) -> Result<Token> {
+        let keys = self.filekeys(app_name)?;
+
+        for (index, key) in keys.iter().enumerate() {
+            if index == 0 {
+                match &key.parent() {
+                    Some(t) => DirBuilder::new().recursive(true).create(t)?,
+                    None => {
+                        return Err(Error::TokenPathError);
+                    }
+                };
+            }
+
+            let file = File::create(key)?;
+            serde_json::to_writer_pretty(file, &self)?;
+        }
+
+        Ok(self)
+    }
+}
+
+pub fn access_token(app_name: &str, credentials_path: &path::Path, scope: &str) -> Result<Token> {
+    let tkn_filekey = access_token_filekey(app_name)?;
 
     token_from_file(tkn_filekey.as_path())
         .or_else(|err| {
             eprintln!("token read err: {}", err);
             credentials::get_auth_data(credentials_path, scope)
                 .and_then(|(auth_code, cfg)| exchange(auth_code, &cfg.installed))
+                .and_then(|tkn| tkn.save(app_name))
         })
-        .and_then(|tkn| save(tkn, &tkn_filekey))
+        .and_then(|tkn| {
+            if is_valid(&tkn) {
+                Ok(tkn)
+            } else {
+                credentials::read_oauth_config(credentials_path)
+                    .and_then(|cfg| refresh(tkn, &cfg.installed))
+                    .and_then(|tkn| tkn.save(app_name))
+            }
+        })
 }
 
 fn token_from_file(p: &path::Path) -> Result<Token> {
@@ -70,30 +111,52 @@ fn exchange(auth_code: String, credentials: &OauthCredentials) -> Result<Token> 
     Ok(tkn)
 }
 
-fn token_filekey(app_name: &String) -> Result<path::PathBuf> {
-    let home_dir = dirs::home_dir();
-    let dir = match home_dir {
-        Some(t) => t,
-        None => return Err(Error::HomeDirError),
-    };
+fn refresh(token: Token, credentials: &OauthCredentials) -> Result<Token> {
+    let tkn = reqwest::Client::new()
+        .post(credentials.token_uri.as_str())
+        .form(&[
+            ("client_id", credentials.client_id.as_str()),
+            ("client_secret", credentials.client_secret.as_str()),
+            ("refresh_token", token.refresh_token.unwrap().as_str()),
+            ("grant_type", "refresh_token"),
+        ])
+        .send()?
+        .json::<Token>()?;
 
-    Ok(dir.join(format!(".{}", app_name)).join(ACCESS_TOKEN_FILE))
+    Ok(tkn)
 }
 
-fn save(token: Token, tkn_filekey: &path::PathBuf) -> Result<Token> {
-    let tkn_parent = tkn_filekey.parent();
+fn is_valid(token: &Token) -> bool {
+    let url = format!(
+        "https://www.googleapis.com/oauth2/v3/tokeninfo?access_token={}",
+        token.access_token
+    );
 
-    let tkn_dir = match tkn_parent {
-        Some(t) => t,
-        None => {
-            return Err(Error::TokenPathError);
+    let resp = reqwest::get(url.as_str());
+    // todo: update to handle expiration timestamp
+    match resp {
+        Ok(t) => {
+            if t.status() != reqwest::StatusCode::OK {
+                false
+            } else {
+                true
+            }
         }
-    };
+        Err(_) => false,
+    }
+}
 
-    std::fs::DirBuilder::new().recursive(true).create(tkn_dir)?;
+fn token_path(app_name: &str) -> Result<path::PathBuf> {
+    match dirs::home_dir() {
+        Some(t) => Ok(t.join(format!(".{}", app_name))),
+        None => Err(Error::HomeDirError),
+    }
+}
 
-    let file = std::fs::File::create(tkn_filekey)?;
-    serde_json::to_writer_pretty(file, &token)?;
+fn refresh_token_filekey(app_name: &str) -> Result<path::PathBuf> {
+    Ok(token_path(app_name)?.join("refresh_token.json"))
+}
 
-    Ok(token)
+fn access_token_filekey(app_name: &str) -> Result<path::PathBuf> {
+    Ok(token_path(app_name)?.join("access_token.json"))
 }

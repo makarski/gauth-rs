@@ -35,7 +35,7 @@ pub fn get_auth_data(p: &Path, scope: &str) -> Result<(String, OauthConfig)> {
     let cfg = read_oauth_config(p)?;
     let auth_code_link = auth_code_uri(&cfg.installed, scope)?;
 
-    println!("> open the link in browser\n\n{}\n", auth_code_link,);
+    println!("> open the link in browser\n\n{}\n", auth_code_link);
     println!("> enter the auth. code\n");
 
     let mut auth_code = String::new();
@@ -44,7 +44,7 @@ pub fn get_auth_data(p: &Path, scope: &str) -> Result<(String, OauthConfig)> {
     Ok((auth_code, cfg))
 }
 
-fn read_oauth_config(p: &Path) -> Result<OauthConfig> {
+pub fn read_oauth_config(p: &Path) -> Result<OauthConfig> {
     let b = std::fs::read(p)?;
     let cfg = serde_json::from_slice::<OauthConfig>(&b)?;
     Ok(cfg)
