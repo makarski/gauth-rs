@@ -1,6 +1,7 @@
 - [ ] move creating client to a constructor? or outside
 - [x] provide dir name / file name for token from configuration
 - [x] provide scopes from outside
+- [x] add automatic token refresh
 - [ ] clean up prints and errors
 - [ ] clean up func namings
 - [ ] document funcs
