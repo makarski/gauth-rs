@@ -1,4 +1,5 @@
 use serde_json::error as serde_err;
+use std::cmp;
 use std::env;
 use std::error;
 use std::fmt;
@@ -17,6 +18,22 @@ pub enum Error {
     ReqwestError(reqwest::Error),
     UrlError(url::ParseError),
     RedirectUriCfgError,
+}
+
+impl cmp::PartialEq for Error {
+    fn eq(&self, other: &Error) -> bool {
+        match (&self, other) {
+            (Error::TokenPathError, Error::TokenPathError) => true,
+            (Error::HomeDirError, Error::HomeDirError) => true,
+            (Error::IOError(_), Error::IOError(_)) => true,
+            (Error::JSONError(_), Error::JSONError(_)) => true,
+            (Error::EnvVarError(_), Error::EnvVarError(_)) => true,
+            (Error::ReqwestError(_), Error::ReqwestError(_)) => true,
+            (Error::UrlError(_), Error::UrlError(_)) => true,
+            (Error::RedirectUriCfgError, Error::RedirectUriCfgError) => true,
+            (_, _) => false,
+        }
+    }
 }
 
 impl fmt::Display for Error {

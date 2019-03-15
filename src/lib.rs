@@ -1,8 +1,32 @@
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     #[test]
-    fn it_works() {
-        assert_eq!(2 + 2, 4);
+    fn token_path_success() {
+        assert_eq!(
+            token_path("myapp"),
+            Ok(dirs::home_dir().unwrap().join(".myapp")),
+            "expected token path format: $HOME/.{{app_name}}"
+        );
+    }
+
+    #[test]
+    fn access_token_filekey_test() {
+        assert_eq!(
+            access_token_filekey("myapp"),
+            Ok(token_path("myapp").unwrap().join("access_token.json")),
+            "expected token format: $HOME/.{{app_name}}/access_token.json"
+        );
+    }
+
+    #[test]
+    fn refresh_token_filekey_test() {
+        assert_eq!(
+            refresh_token_filekey("myapp"),
+            Ok(token_path("myapp").unwrap().join("refresh_token.json")),
+            "expected token format: $HOME/.{{app_name}}/refresh_token.json"
+        );
     }
 }
 
