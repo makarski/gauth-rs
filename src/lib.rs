@@ -1,6 +1,11 @@
 #[cfg(test)]
 mod tests {
     use super::*;
+    use errors::Error as intern_err;
+    use serde_json::error as serde_errs;
+    use serde_json::Error as serde_err;
+    use std::fs;
+    use std::io;
 
     #[test]
     fn token_path_success() {
@@ -28,6 +33,69 @@ mod tests {
             "expected token format: $HOME/.{{app_name}}/refresh_token.json"
         );
     }
+
+    #[test]
+    fn token_from_file_success() {
+        let token_json = r#"{
+  "access_token": "access_token_value",
+  "expires_in": 3600,
+  "refresh_token": "refresh_token_value",
+  "scope": "https://www.googleapis.com/auth/calendar.events",
+  "token_type": "Bearer"
+}"#;
+
+        assert!(fs::write("testfile.json", token_json).is_ok());
+
+        let tkn_res = token_from_file("testfile.json");
+        assert!(
+            tkn_res.is_ok(),
+            "expect to have succesfully deserialized a test token"
+        );
+        assert_eq!(
+            tkn_res.unwrap(),
+            Token {
+                access_token: String::from("access_token_value"),
+                expires_in: 3600,
+                refresh_token: Some(String::from("refresh_token_value")),
+                scope: Some(String::from(
+                    "https://www.googleapis.com/auth/calendar.events"
+                )),
+                token_type: String::from("Bearer"),
+            },
+            "deserialized token should match the test token"
+        );
+
+        fs::remove_file("testfile.json").expect("could not remove testfile.json");
+    }
+
+    #[test]
+    fn token_from_file_deserialize_error() {
+        let token_json = r#"{eapis.com/auth/calendar.events}"#;
+
+        assert!(fs::write("testfile_de_err.json", token_json).is_ok());
+
+        let expected_serde_err = serde_err::syntax(serde_errs::ErrorCode::KeyMustBeAString, 1, 2);
+        let expected_err_msg = expected_serde_err.to_string();
+
+        let tkn_err = token_from_file("testfile_de_err.json").unwrap_err();
+        assert_eq!(tkn_err, intern_err::JSONError(expected_serde_err));
+        assert_eq!(tkn_err.to_string(), expected_err_msg);
+        fs::remove_file("testfile_de_err.json").expect("could not remove testfile.json");
+    }
+
+    #[test]
+    fn token_from_file_read_error() {
+        let expected_io_err = io::Error::new(
+            io::ErrorKind::NotFound,
+            "No such file or directory (os error 2)",
+        );
+        let expected_io_err_msg = expected_io_err.to_string();
+
+        let tkn_err = token_from_file("non_existent_file.json").unwrap_err();
+
+        assert_eq!(tkn_err, errors::Error::IOError(expected_io_err));
+        assert_eq!(tkn_err.to_string(), expected_io_err_msg);
+    }
 }
 
 #[macro_use]
@@ -41,13 +109,14 @@ use credentials::OauthCredentials;
 mod errors;
 use errors::{Error, Result};
 
+use std::fs;
 use std::fs::{DirBuilder, File};
 use std::path;
 
 // Token configs
 const GRANT_TYPE: &str = "authorization_code";
 
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, PartialEq)]
 pub struct Token {
     pub access_token: String,
     pub expires_in: u32,
@@ -113,8 +182,8 @@ pub fn access_token(app_name: &str, credentials_path: &path::Path, scope: &str) 
         })
 }
 
-fn token_from_file(p: &path::Path) -> Result<Token> {
-    let b = std::fs::read(p)?;
+fn token_from_file<P: AsRef<path::Path>>(p: P) -> Result<Token> {
+    let b = fs::read(p)?;
     let tkn = serde_json::from_slice::<Token>(&b)?;
     Ok(tkn)
 }
