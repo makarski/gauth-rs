@@ -112,6 +112,7 @@ use errors::{Error, Result};
 use std::fs;
 use std::fs::{DirBuilder, File};
 use std::path;
+use std::result;
 
 // Token configs
 const GRANT_TYPE: &str = "authorization_code";
@@ -161,23 +162,32 @@ impl Token {
     }
 }
 
-pub fn access_token(app_name: &str, credentials_path: &path::Path, scope: &str) -> Result<Token> {
+pub fn access_token(
+    app_name: &str,
+    credentials_path: &path::Path,
+    scope: &str,
+    get_auth_code: fn(
+        consent_uri: String,
+    ) -> result::Result<String, Box<dyn std::error::Error>>,
+) -> Result<Token> {
     let tkn_filekey = access_token_filekey(app_name)?;
+    let crds_cfg = credentials::read_oauth_config(credentials_path)?.installed;
 
     token_from_file(tkn_filekey.as_path())
         .or_else(|err| {
             eprintln!("token read err: {}", err);
-            credentials::get_auth_data(credentials_path, scope)
-                .and_then(|(auth_code, cfg)| exchange(auth_code, &cfg.installed))
+            credentials::get_auth_code_uri(&crds_cfg, scope)
+                .and_then(|consent_uri| {
+                    get_auth_code(consent_uri).map_err(|err| Error::UserError(err))
+                })
+                .and_then(|auth_code| exchange(auth_code, &crds_cfg))
                 .and_then(|tkn| tkn.save(app_name))
         })
         .and_then(|tkn| {
             if is_valid(&tkn) {
                 Ok(tkn)
             } else {
-                credentials::read_oauth_config(credentials_path)
-                    .and_then(|cfg| refresh(tkn, &cfg.installed))
-                    .and_then(|tkn| tkn.save(app_name))
+                refresh(app_name, &crds_cfg).and_then(|tkn| tkn.save(app_name))
             }
         })
 }
@@ -204,13 +214,21 @@ fn exchange(auth_code: String, credentials: &OauthCredentials) -> Result<Token> 
     Ok(tkn)
 }
 
-fn refresh(token: Token, credentials: &OauthCredentials) -> Result<Token> {
+fn refresh(app_name: &str, credentials: &OauthCredentials) -> Result<Token> {
+    let refresh_token = token_from_file(refresh_token_filekey(app_name)?)?;
+
     let tkn = reqwest::Client::new()
         .post(credentials.token_uri.as_str())
         .form(&[
             ("client_id", credentials.client_id.as_str()),
             ("client_secret", credentials.client_secret.as_str()),
-            ("refresh_token", token.refresh_token.unwrap().as_str()),
+            (
+                "refresh_token",
+                refresh_token
+                    .refresh_token
+                    .expect("refresh token is None")
+                    .as_str(),
+            ),
             ("grant_type", "refresh_token"),
         ])
         .send()?
