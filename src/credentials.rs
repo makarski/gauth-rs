@@ -31,17 +31,9 @@ impl OauthCredentials {
     }
 }
 
-pub fn get_auth_data(p: &Path, scope: &str) -> Result<(String, OauthConfig)> {
-    let cfg = read_oauth_config(p)?;
-    let auth_code_link = auth_code_uri(&cfg.installed, scope)?;
-
-    println!("> open the link in browser\n\n{}\n", auth_code_link);
-    println!("> enter the auth. code\n");
-
-    let mut auth_code = String::new();
-    io::stdin().read_line(&mut auth_code)?;
-
-    Ok((auth_code, cfg))
+pub fn get_auth_code_uri(credentials: &OauthCredentials, scope: &str) -> Result<String> {
+    let auth_code_link = auth_code_uri(credentials, scope)?;
+    Ok(auth_code_link.into_string())
 }
 
 pub fn read_oauth_config(p: &Path) -> Result<OauthConfig> {

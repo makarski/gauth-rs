@@ -18,6 +18,7 @@ pub enum Error {
     ReqwestError(reqwest::Error),
     UrlError(url::ParseError),
     RedirectUriCfgError,
+    UserError(Box<dyn error::Error>),
 }
 
 impl cmp::PartialEq for Error {
@@ -31,6 +32,7 @@ impl cmp::PartialEq for Error {
             (Error::ReqwestError(_), Error::ReqwestError(_)) => true,
             (Error::UrlError(_), Error::UrlError(_)) => true,
             (Error::RedirectUriCfgError, Error::RedirectUriCfgError) => true,
+            (Error::UserError(_), Error::UserError(_)) => true,
             (_, _) => false,
         }
     }
@@ -50,6 +52,7 @@ impl fmt::Display for Error {
             Error::RedirectUriCfgError => {
                 write!(f, "failed to retrieve redirect_uri from credentials")
             }
+            Error::UserError(ref e) => e.fmt(f),
         }
     }
 }
@@ -65,6 +68,7 @@ impl error::Error for Error {
             Error::UrlError(ref e) => e.description(),
             Error::HomeDirError => "failed to identify home directory",
             Error::RedirectUriCfgError => "failed to retrieve redirect_uri from credentials",
+            Error::UserError(ref e) => e.description(),
         }
     }
 
@@ -78,6 +82,7 @@ impl error::Error for Error {
             Error::UrlError(ref e) => Some(e),
             Error::HomeDirError => None,
             Error::RedirectUriCfgError => None,
+            Error::UserError(ref _e) => None, // todo: check if can use Some(e)
         }
     }
 }
