@@ -8,34 +8,40 @@ mod tests {
     use std::io;
 
     #[test]
-    fn token_path_success() {
+    fn auth_tkn_path_success() {
+        let auth = Auth::new("myapp".to_owned(), PathBuf::new());
+
         assert_eq!(
-            token_path("myapp"),
+            auth.tkn_path(),
             Ok(dirs::home_dir().unwrap().join(".myapp")),
             "expected token path format: $HOME/.{{app_name}}"
         );
     }
 
     #[test]
-    fn access_token_filekey_test() {
+    fn auth_tkn_access_filekey_success() {
+        let auth = Auth::new("myapp".to_owned(), PathBuf::new());
+
         assert_eq!(
-            access_token_filekey("myapp"),
-            Ok(token_path("myapp").unwrap().join("access_token.json")),
+            auth.tkn_access_filekey(),
+            Ok(auth.tkn_path().unwrap().join("access_token.json")),
             "expected token format: $HOME/.{{app_name}}/access_token.json"
         );
     }
 
     #[test]
-    fn refresh_token_filekey_test() {
+    fn auth_tkn_refresh_filekey_success() {
+        let auth = Auth::new("myapp".to_owned(), PathBuf::new());
+
         assert_eq!(
-            refresh_token_filekey("myapp"),
-            Ok(token_path("myapp").unwrap().join("refresh_token.json")),
+            auth.tkn_refresh_filekey(),
+            Ok(auth.tkn_path().unwrap().join("refresh_token.json")),
             "expected token format: $HOME/.{{app_name}}/refresh_token.json"
         );
     }
 
     #[test]
-    fn token_from_file_success() {
+    fn tkn_from_file_success() {
         let token_json = r#"{
   "access_token": "access_token_value",
   "expires_in": 3600,
@@ -46,7 +52,7 @@ mod tests {
 
         assert!(fs::write("testfile.json", token_json).is_ok());
 
-        let tkn_res = token_from_file("testfile.json");
+        let tkn_res = tkn_from_file("testfile.json");
         assert!(
             tkn_res.is_ok(),
             "expect to have succesfully deserialized a test token"
@@ -69,7 +75,7 @@ mod tests {
     }
 
     #[test]
-    fn token_from_file_deserialize_error() {
+    fn tkn_from_file_deserialize_error() {
         let token_json = r#"{eapis.com/auth/calendar.events}"#;
 
         assert!(fs::write("testfile_de_err.json", token_json).is_ok());
@@ -77,21 +83,21 @@ mod tests {
         let expected_serde_err = serde_err::syntax(serde_errs::ErrorCode::KeyMustBeAString, 1, 2);
         let expected_err_msg = expected_serde_err.to_string();
 
-        let tkn_err = token_from_file("testfile_de_err.json").unwrap_err();
+        let tkn_err = tkn_from_file("testfile_de_err.json").unwrap_err();
         assert_eq!(tkn_err, intern_err::JSONError(expected_serde_err));
         assert_eq!(tkn_err.to_string(), expected_err_msg);
         fs::remove_file("testfile_de_err.json").expect("could not remove testfile.json");
     }
 
     #[test]
-    fn token_from_file_read_error() {
+    fn tkn_from_file_read_error() {
         let expected_io_err = io::Error::new(
             io::ErrorKind::NotFound,
             "No such file or directory (os error 2)",
         );
         let expected_io_err_msg = expected_io_err.to_string();
 
-        let tkn_err = token_from_file("non_existent_file.json").unwrap_err();
+        let tkn_err = tkn_from_file("non_existent_file.json").unwrap_err();
 
         assert_eq!(tkn_err, errors::Error::IOError(expected_io_err));
         assert_eq!(tkn_err.to_string(), expected_io_err_msg);
@@ -137,10 +143,10 @@ impl Auth {
     where
         F: Fn(String) -> result::Result<String, Box<dyn std_err::Error>>,
     {
-        let tkn_filekey = self.access_token_filekey()?;
+        let tkn_filekey = self.tkn_access_filekey()?;
         let crds_cfg = credentials::read_oauth_config(&self.crd_path)?.installed;
 
-        token_from_file(tkn_filekey.as_path())
+        tkn_from_file(tkn_filekey.as_path())
             .or_else(|err| {
                 eprintln!("token read err: {}", err);
                 credentials::get_auth_code_uri(&crds_cfg, scope)
@@ -198,7 +204,7 @@ impl Auth {
     }
 
     fn tkn_refresh(&self, credentials: &OauthCredentials) -> Result<Token> {
-        let refresh_token = token_from_file(self.refresh_token_filekey()?)?;
+        let refresh_token = tkn_from_file(self.tkn_refresh_filekey()?)?;
 
         let tkn = self
             ._http_client
@@ -242,28 +248,28 @@ impl Auth {
     }
 
     fn tkn_filekeys(&self, tkn: &Token) -> Result<Vec<PathBuf>> {
-        let mut keys = vec![self.access_token_filekey()?];
+        let mut keys = vec![self.tkn_access_filekey()?];
 
         if tkn.is_refresh() {
-            keys.push(self.refresh_token_filekey()?);
+            keys.push(self.tkn_refresh_filekey()?);
         }
 
         Ok(keys)
     }
 
-    fn token_path(&self) -> Result<PathBuf> {
+    fn tkn_path(&self) -> Result<PathBuf> {
         match dirs::home_dir() {
             Some(t) => Ok(t.join(format!(".{}", &self.app_name))),
             None => Err(Error::HomeDirError),
         }
     }
 
-    fn refresh_token_filekey(&self) -> Result<PathBuf> {
-        Ok(self.token_path()?.join("refresh_token.json"))
+    fn tkn_refresh_filekey(&self) -> Result<PathBuf> {
+        Ok(self.tkn_path()?.join("refresh_token.json"))
     }
 
-    fn access_token_filekey(&self) -> Result<PathBuf> {
-        Ok(self.token_path()?.join("access_token.json"))
+    fn tkn_access_filekey(&self) -> Result<PathBuf> {
+        Ok(self.tkn_path()?.join("access_token.json"))
     }
 }
 
@@ -282,7 +288,7 @@ impl Token {
     }
 }
 
-fn token_from_file<P: AsRef<Path>>(p: P) -> Result<Token> {
+fn tkn_from_file<P: AsRef<Path>>(p: P) -> Result<Token> {
     let b = fs::read(p)?;
     let tkn = serde_json::from_slice::<Token>(&b)?;
     Ok(tkn)
