@@ -6,6 +6,8 @@ mod tests {
     use serde_json::Error as serde_err;
     use std::fs;
     use std::io;
+    use std::thread::sleep;
+    use std::time::Duration;
 
     #[test]
     fn auth_tkn_path_success() {
@@ -102,6 +104,62 @@ mod tests {
         assert_eq!(tkn_err, errors::Error::IOError(expected_io_err));
         assert_eq!(tkn_err.to_string(), expected_io_err_msg);
     }
+
+    #[test]
+    fn auth_tkn_is_expired() {
+        let auth = Auth::new("myapp".to_owned(), PathBuf::new());
+
+        let token_json_fmt = |exp_v: u64| -> String {
+            format!(
+                r###"{{
+                        "access_token": "access_token_value",
+                        "expires_in": {exp_val},
+                        "refresh_token": "refresh_token_value",
+                        "scope": "https://www.googleapis.com/auth/calendar.events",
+                        "token_type": "Bearer"
+                    }}"###,
+                exp_val = exp_v
+            )
+        };
+
+        let test_cases = vec![
+            (
+                "expected: token is expired",
+                1,
+                2,
+                "expired_token.json",
+                true,
+            ),
+            (
+                "expected: token is not expired",
+                3600,
+                1,
+                "non_expired_token.json",
+                false,
+            ),
+        ];
+
+        for test_case in test_cases.into_iter() {
+            let (scenario, expires_in, sleep_secs, filename, expected_expired) = test_case;
+
+            let tkn_json = format!("{}", token_json_fmt(expires_in));
+            assert!(fs::write(filename, tkn_json).is_ok());
+
+            sleep(Duration::from_secs(sleep_secs));
+
+            let tkn_deserialized = tkn_from_file(filename)
+                .expect("expect to have successfully read test fixture file");
+
+            assert_eq!(
+                auth.tkn_is_expired(&tkn_deserialized, filename),
+                expected_expired,
+                "scenario failed: {}",
+                scenario,
+            );
+
+            fs::remove_file(filename).expect("could not remove test file");
+        }
+    }
 }
 
 #[macro_use]
@@ -118,8 +176,10 @@ use errors::{Error, Result};
 use std::error as std_err;
 use std::fs;
 use std::fs::{DirBuilder, File};
+use std::ops::Add;
 use std::path::{Path, PathBuf};
 use std::result;
+use std::time::{Duration, SystemTime};
 
 // Token configs
 const GRANT_TYPE: &str = "authorization_code";
@@ -156,7 +216,7 @@ impl Auth {
                     .and_then(|tkn| self.tkn_save(tkn))
             })
             .and_then(|tkn| {
-                if self.tkn_is_valid(&tkn) {
+                if self.tkn_is_valid(&tkn, tkn_filekey.as_path()) {
                     Ok(tkn)
                 } else {
                     self.tkn_refresh(&crds_cfg)
@@ -165,23 +225,37 @@ impl Auth {
             })
     }
 
-    fn tkn_is_valid(&self, tkn: &Token) -> bool {
+    fn tkn_is_valid<P: AsRef<Path>>(&self, tkn: &Token, p: P) -> bool {
+        if !self.tkn_is_expired(tkn, p) {
+            return true;
+        }
+
         let url = format!(
             "https://www.googleapis.com/oauth2/v3/tokeninfo?access_token={}",
             tkn.access_token
         );
 
         let resp = self._http_client.get(url.as_str()).send();
-        // todo: update to handle expiration timestamp
         match resp {
-            Ok(t) => {
-                if t.status() != reqwest::StatusCode::OK {
-                    false
-                } else {
-                    true
-                }
-            }
+            Ok(t) => t.status() == reqwest::StatusCode::OK,
             Err(_) => false,
+        }
+    }
+
+    fn tkn_is_expired<P: AsRef<Path>>(&self, tkn: &Token, p: P) -> bool {
+        let f = std::fs::File::open(p);
+        if f.is_err() {
+            return true;
+        }
+
+        let m = f.unwrap().metadata();
+        if m.is_err() {
+            return true;
+        }
+
+        match m.unwrap().modified() {
+            Ok(time) => time.add(Duration::from_secs(tkn.expires_in)) < SystemTime::now(),
+            _ => return true,
         }
     }
 
@@ -275,7 +349,7 @@ impl Auth {
 #[derive(Deserialize, Serialize, Debug, PartialEq)]
 pub struct Token {
     pub access_token: String,
-    pub expires_in: u32,
+    pub expires_in: u64,
     pub refresh_token: Option<String>,
     pub scope: Option<String>,
     pub token_type: String,
