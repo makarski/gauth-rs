@@ -109,6 +109,7 @@ use credentials::OauthCredentials;
 mod errors;
 use errors::{Error, Result};
 
+use std::error as std_err;
 use std::fs;
 use std::fs::{DirBuilder, File};
 use std::path;
@@ -162,14 +163,15 @@ impl Token {
     }
 }
 
-pub fn access_token(
+pub fn access_token<F>(
     app_name: &str,
     credentials_path: &path::Path,
     scope: &str,
-    get_auth_code: fn(
-        consent_uri: String,
-    ) -> result::Result<String, Box<dyn std::error::Error>>,
-) -> Result<Token> {
+    get_auth_code: F,
+) -> Result<Token>
+where
+    F: Fn(String) -> result::Result<String, Box<dyn std_err::Error>>,
+{
     let tkn_filekey = access_token_filekey(app_name)?;
     let crds_cfg = credentials::read_oauth_config(credentials_path)?.installed;
 
