@@ -147,8 +147,7 @@ impl Auth {
         let crds_cfg = credentials::read_oauth_config(&self.crd_path)?.installed;
 
         tkn_from_file(tkn_filekey.as_path())
-            .or_else(|err| {
-                eprintln!("token read err: {}", err);
+            .or_else(|_| {
                 credentials::get_auth_code_uri(&crds_cfg, scope)
                     .and_then(|consent_uri| {
                         get_auth_code(consent_uri).map_err(|err| Error::UserError(err))
