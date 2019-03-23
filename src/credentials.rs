@@ -1,5 +1,4 @@
 use crate::errors::{Error, Result};
-use std::io;
 use std::path::Path;
 use url::Url;
 
