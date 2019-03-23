@@ -8,34 +8,40 @@ mod tests {
     use std::io;
 
     #[test]
-    fn token_path_success() {
+    fn auth_tkn_path_success() {
+        let auth = Auth::new("myapp".to_owned(), PathBuf::new());
+
         assert_eq!(
-            token_path("myapp"),
+            auth.tkn_path(),
             Ok(dirs::home_dir().unwrap().join(".myapp")),
             "expected token path format: $HOME/.{{app_name}}"
         );
     }
 
     #[test]
-    fn access_token_filekey_test() {
+    fn auth_tkn_access_filekey_success() {
+        let auth = Auth::new("myapp".to_owned(), PathBuf::new());
+
         assert_eq!(
-            access_token_filekey("myapp"),
-            Ok(token_path("myapp").unwrap().join("access_token.json")),
+            auth.tkn_access_filekey(),
+            Ok(auth.tkn_path().unwrap().join("access_token.json")),
             "expected token format: $HOME/.{{app_name}}/access_token.json"
         );
     }
 
     #[test]
-    fn refresh_token_filekey_test() {
+    fn auth_tkn_refresh_filekey_success() {
+        let auth = Auth::new("myapp".to_owned(), PathBuf::new());
+
         assert_eq!(
-            refresh_token_filekey("myapp"),
-            Ok(token_path("myapp").unwrap().join("refresh_token.json")),
+            auth.tkn_refresh_filekey(),
+            Ok(auth.tkn_path().unwrap().join("refresh_token.json")),
             "expected token format: $HOME/.{{app_name}}/refresh_token.json"
         );
     }
 
     #[test]
-    fn token_from_file_success() {
+    fn tkn_from_file_success() {
         let token_json = r#"{
   "access_token": "access_token_value",
   "expires_in": 3600,
@@ -46,7 +52,7 @@ mod tests {
 
         assert!(fs::write("testfile.json", token_json).is_ok());
 
-        let tkn_res = token_from_file("testfile.json");
+        let tkn_res = tkn_from_file("testfile.json");
         assert!(
             tkn_res.is_ok(),
             "expect to have succesfully deserialized a test token"
@@ -69,7 +75,7 @@ mod tests {
     }
 
     #[test]
-    fn token_from_file_deserialize_error() {
+    fn tkn_from_file_deserialize_error() {
         let token_json = r#"{eapis.com/auth/calendar.events}"#;
 
         assert!(fs::write("testfile_de_err.json", token_json).is_ok());
@@ -77,21 +83,21 @@ mod tests {
         let expected_serde_err = serde_err::syntax(serde_errs::ErrorCode::KeyMustBeAString, 1, 2);
         let expected_err_msg = expected_serde_err.to_string();
 
-        let tkn_err = token_from_file("testfile_de_err.json").unwrap_err();
+        let tkn_err = tkn_from_file("testfile_de_err.json").unwrap_err();
         assert_eq!(tkn_err, intern_err::JSONError(expected_serde_err));
         assert_eq!(tkn_err.to_string(), expected_err_msg);
         fs::remove_file("testfile_de_err.json").expect("could not remove testfile.json");
     }
 
     #[test]
-    fn token_from_file_read_error() {
+    fn tkn_from_file_read_error() {
         let expected_io_err = io::Error::new(
             io::ErrorKind::NotFound,
             "No such file or directory (os error 2)",
         );
         let expected_io_err_msg = expected_io_err.to_string();
 
-        let tkn_err = token_from_file("non_existent_file.json").unwrap_err();
+        let tkn_err = tkn_from_file("non_existent_file.json").unwrap_err();
 
         assert_eq!(tkn_err, errors::Error::IOError(expected_io_err));
         assert_eq!(tkn_err.to_string(), expected_io_err_msg);
@@ -112,38 +118,116 @@ use errors::{Error, Result};
 use std::error as std_err;
 use std::fs;
 use std::fs::{DirBuilder, File};
-use std::path;
+use std::path::{Path, PathBuf};
 use std::result;
 
 // Token configs
 const GRANT_TYPE: &str = "authorization_code";
 
-#[derive(Deserialize, Serialize, Debug, PartialEq)]
-pub struct Token {
-    pub access_token: String,
-    pub expires_in: u32,
-    pub refresh_token: Option<String>,
-    pub scope: Option<String>,
-    pub token_type: String,
+pub struct Auth {
+    app_name: String,
+    crd_path: PathBuf,
+    _http_client: reqwest::Client,
 }
 
-impl Token {
-    fn filekeys(&self, app_name: &str) -> Result<Vec<path::PathBuf>> {
-        let mut keys = vec![access_token_filekey(app_name)?];
-
-        if self.is_refresh() {
-            keys.push(refresh_token_filekey(app_name)?);
+impl Auth {
+    pub fn new(app_name: String, crd_path: PathBuf) -> Auth {
+        Auth {
+            app_name: app_name,
+            crd_path: crd_path,
+            _http_client: reqwest::Client::new(),
         }
-
-        Ok(keys)
     }
 
-    fn is_refresh(&self) -> bool {
-        self.refresh_token.is_some()
+    pub fn access_token<F>(&self, scope: &str, get_auth_code: F) -> Result<Token>
+    where
+        F: Fn(String) -> result::Result<String, Box<dyn std_err::Error>>,
+    {
+        let tkn_filekey = self.tkn_access_filekey()?;
+        let crds_cfg = credentials::read_oauth_config(&self.crd_path)?.installed;
+
+        tkn_from_file(tkn_filekey.as_path())
+            .or_else(|_| {
+                credentials::get_auth_code_uri(&crds_cfg, scope)
+                    .and_then(|consent_uri| {
+                        get_auth_code(consent_uri).map_err(|err| Error::UserError(err))
+                    })
+                    .and_then(|auth_code| self.tkn_exchange(auth_code, &crds_cfg))
+                    .and_then(|tkn| self.tkn_save(tkn))
+            })
+            .and_then(|tkn| {
+                if self.tkn_is_valid(&tkn) {
+                    Ok(tkn)
+                } else {
+                    self.tkn_refresh(&crds_cfg)
+                        .and_then(|tkn| self.tkn_save(tkn))
+                }
+            })
     }
 
-    fn save(self, app_name: &str) -> Result<Token> {
-        let keys = self.filekeys(app_name)?;
+    fn tkn_is_valid(&self, tkn: &Token) -> bool {
+        let url = format!(
+            "https://www.googleapis.com/oauth2/v3/tokeninfo?access_token={}",
+            tkn.access_token
+        );
+
+        let resp = self._http_client.get(url.as_str()).send();
+        // todo: update to handle expiration timestamp
+        match resp {
+            Ok(t) => {
+                if t.status() != reqwest::StatusCode::OK {
+                    false
+                } else {
+                    true
+                }
+            }
+            Err(_) => false,
+        }
+    }
+
+    fn tkn_exchange(&self, auth_code: String, credentials: &OauthCredentials) -> Result<Token> {
+        let mut resp = self
+            ._http_client
+            .post(credentials.token_uri.as_str())
+            .form(&[
+                ("code", auth_code.as_str()),
+                ("client_secret", credentials.client_secret.as_str()),
+                ("grant_type", GRANT_TYPE),
+                ("client_id", credentials.client_id.as_str()),
+                ("redirect_uri", credentials.redirect_uri()?),
+            ])
+            .send()?;
+
+        let tkn = resp.json::<Token>()?;
+        Ok(tkn)
+    }
+
+    fn tkn_refresh(&self, credentials: &OauthCredentials) -> Result<Token> {
+        let refresh_token = tkn_from_file(self.tkn_refresh_filekey()?)?;
+
+        let tkn = self
+            ._http_client
+            .post(credentials.token_uri.as_str())
+            .form(&[
+                ("client_id", credentials.client_id.as_str()),
+                ("client_secret", credentials.client_secret.as_str()),
+                (
+                    "refresh_token",
+                    refresh_token
+                        .refresh_token
+                        .expect("refresh token is None")
+                        .as_str(),
+                ),
+                ("grant_type", "refresh_token"),
+            ])
+            .send()?
+            .json::<Token>()?;
+
+        Ok(tkn)
+    }
+
+    fn tkn_save(&self, tkn: Token) -> Result<Token> {
+        let keys = self.tkn_filekeys(&tkn)?;
 
         for (index, key) in keys.iter().enumerate() {
             if index == 0 {
@@ -156,120 +240,55 @@ impl Token {
             }
 
             let file = File::create(key)?;
-            serde_json::to_writer_pretty(file, &self)?;
+            serde_json::to_writer_pretty(file, &tkn)?;
         }
 
-        Ok(self)
+        Ok(tkn)
+    }
+
+    fn tkn_filekeys(&self, tkn: &Token) -> Result<Vec<PathBuf>> {
+        let mut keys = vec![self.tkn_access_filekey()?];
+
+        if tkn.is_refresh() {
+            keys.push(self.tkn_refresh_filekey()?);
+        }
+
+        Ok(keys)
+    }
+
+    fn tkn_path(&self) -> Result<PathBuf> {
+        match dirs::home_dir() {
+            Some(t) => Ok(t.join(format!(".{}", &self.app_name))),
+            None => Err(Error::HomeDirError),
+        }
+    }
+
+    fn tkn_refresh_filekey(&self) -> Result<PathBuf> {
+        Ok(self.tkn_path()?.join("refresh_token.json"))
+    }
+
+    fn tkn_access_filekey(&self) -> Result<PathBuf> {
+        Ok(self.tkn_path()?.join("access_token.json"))
     }
 }
 
-pub fn access_token<F>(
-    app_name: &str,
-    credentials_path: &path::Path,
-    scope: &str,
-    get_auth_code: F,
-) -> Result<Token>
-where
-    F: Fn(String) -> result::Result<String, Box<dyn std_err::Error>>,
-{
-    let tkn_filekey = access_token_filekey(app_name)?;
-    let crds_cfg = credentials::read_oauth_config(credentials_path)?.installed;
-
-    token_from_file(tkn_filekey.as_path())
-        .or_else(|err| {
-            eprintln!("token read err: {}", err);
-            credentials::get_auth_code_uri(&crds_cfg, scope)
-                .and_then(|consent_uri| {
-                    get_auth_code(consent_uri).map_err(|err| Error::UserError(err))
-                })
-                .and_then(|auth_code| exchange(auth_code, &crds_cfg))
-                .and_then(|tkn| tkn.save(app_name))
-        })
-        .and_then(|tkn| {
-            if is_valid(&tkn) {
-                Ok(tkn)
-            } else {
-                refresh(app_name, &crds_cfg).and_then(|tkn| tkn.save(app_name))
-            }
-        })
+#[derive(Deserialize, Serialize, Debug, PartialEq)]
+pub struct Token {
+    pub access_token: String,
+    pub expires_in: u32,
+    pub refresh_token: Option<String>,
+    pub scope: Option<String>,
+    pub token_type: String,
 }
 
-fn token_from_file<P: AsRef<path::Path>>(p: P) -> Result<Token> {
+impl Token {
+    fn is_refresh(&self) -> bool {
+        self.refresh_token.is_some()
+    }
+}
+
+fn tkn_from_file<P: AsRef<Path>>(p: P) -> Result<Token> {
     let b = fs::read(p)?;
     let tkn = serde_json::from_slice::<Token>(&b)?;
     Ok(tkn)
-}
-
-fn exchange(auth_code: String, credentials: &OauthCredentials) -> Result<Token> {
-    let mut resp = reqwest::Client::new()
-        .post(credentials.token_uri.as_str())
-        .form(&[
-            ("code", auth_code.as_str()),
-            ("client_secret", credentials.client_secret.as_str()),
-            ("grant_type", GRANT_TYPE),
-            ("client_id", credentials.client_id.as_str()),
-            ("redirect_uri", credentials.redirect_uri()?),
-        ])
-        .send()?;
-
-    let tkn = resp.json::<Token>()?;
-    Ok(tkn)
-}
-
-fn refresh(app_name: &str, credentials: &OauthCredentials) -> Result<Token> {
-    let refresh_token = token_from_file(refresh_token_filekey(app_name)?)?;
-
-    let tkn = reqwest::Client::new()
-        .post(credentials.token_uri.as_str())
-        .form(&[
-            ("client_id", credentials.client_id.as_str()),
-            ("client_secret", credentials.client_secret.as_str()),
-            (
-                "refresh_token",
-                refresh_token
-                    .refresh_token
-                    .expect("refresh token is None")
-                    .as_str(),
-            ),
-            ("grant_type", "refresh_token"),
-        ])
-        .send()?
-        .json::<Token>()?;
-
-    Ok(tkn)
-}
-
-fn is_valid(token: &Token) -> bool {
-    let url = format!(
-        "https://www.googleapis.com/oauth2/v3/tokeninfo?access_token={}",
-        token.access_token
-    );
-
-    let resp = reqwest::get(url.as_str());
-    // todo: update to handle expiration timestamp
-    match resp {
-        Ok(t) => {
-            if t.status() != reqwest::StatusCode::OK {
-                false
-            } else {
-                true
-            }
-        }
-        Err(_) => false,
-    }
-}
-
-fn token_path(app_name: &str) -> Result<path::PathBuf> {
-    match dirs::home_dir() {
-        Some(t) => Ok(t.join(format!(".{}", app_name))),
-        None => Err(Error::HomeDirError),
-    }
-}
-
-fn refresh_token_filekey(app_name: &str) -> Result<path::PathBuf> {
-    Ok(token_path(app_name)?.join("refresh_token.json"))
-}
-
-fn access_token_filekey(app_name: &str) -> Result<path::PathBuf> {
-    Ok(token_path(app_name)?.join("access_token.json"))
 }
