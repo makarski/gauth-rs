@@ -6,6 +6,8 @@ mod tests {
     use serde_json::Error as serde_err;
     use std::fs;
     use std::io;
+    use std::thread::sleep;
+    use std::time::Duration;
 
     #[test]
     fn auth_tkn_path_success() {
@@ -101,6 +103,62 @@ mod tests {
 
         assert_eq!(tkn_err, errors::Error::IOError(expected_io_err));
         assert_eq!(tkn_err.to_string(), expected_io_err_msg);
+    }
+
+    #[test]
+    fn auth_tkn_is_expired() {
+        let auth = Auth::new("myapp".to_owned(), PathBuf::new());
+
+        let token_json_fmt = |exp_v: u64| -> String {
+            format!(
+                r###"{{
+                        "access_token": "access_token_value",
+                        "expires_in": {exp_val},
+                        "refresh_token": "refresh_token_value",
+                        "scope": "https://www.googleapis.com/auth/calendar.events",
+                        "token_type": "Bearer"
+                    }}"###,
+                exp_val = exp_v
+            )
+        };
+
+        let test_cases = vec![
+            (
+                "expected: token is expired",
+                1,
+                2,
+                "expired_token.json",
+                true,
+            ),
+            (
+                "expected: token is not expired",
+                3600,
+                1,
+                "non_expired_token.json",
+                false,
+            ),
+        ];
+
+        for test_case in test_cases.into_iter() {
+            let (scenario, expires_in, sleep_secs, filename, expected_expired) = test_case;
+
+            let tkn_json = format!("{}", token_json_fmt(expires_in));
+            assert!(fs::write(filename, tkn_json).is_ok());
+
+            sleep(Duration::from_secs(sleep_secs));
+
+            let tkn_deserialized = tkn_from_file(filename)
+                .expect("expect to have successfully read test fixture file");
+
+            assert_eq!(
+                auth.tkn_is_expired(&tkn_deserialized, filename),
+                expected_expired,
+                "scenario failed: {}",
+                scenario,
+            );
+
+            fs::remove_file(filename).expect("could not remove test file");
+        }
     }
 }
 
