@@ -1,167 +1,3 @@
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use errors::Error as intern_err;
-    use serde_json::error as serde_errs;
-    use serde_json::Error as serde_err;
-    use std::fs;
-    use std::io;
-    use std::thread::sleep;
-    use std::time::Duration;
-
-    #[test]
-    fn auth_tkn_path_success() {
-        let auth = Auth::new("myapp".to_owned(), PathBuf::new());
-
-        assert_eq!(
-            auth.tkn_path(),
-            Ok(dirs::home_dir().unwrap().join(".myapp")),
-            "expected token path format: $HOME/.{{app_name}}"
-        );
-    }
-
-    #[test]
-    fn auth_tkn_access_filekey_success() {
-        let auth = Auth::new("myapp".to_owned(), PathBuf::new());
-
-        assert_eq!(
-            auth.tkn_access_filekey(),
-            Ok(auth.tkn_path().unwrap().join("access_token.json")),
-            "expected token format: $HOME/.{{app_name}}/access_token.json"
-        );
-    }
-
-    #[test]
-    fn auth_tkn_refresh_filekey_success() {
-        let auth = Auth::new("myapp".to_owned(), PathBuf::new());
-
-        assert_eq!(
-            auth.tkn_refresh_filekey(),
-            Ok(auth.tkn_path().unwrap().join("refresh_token.json")),
-            "expected token format: $HOME/.{{app_name}}/refresh_token.json"
-        );
-    }
-
-    #[test]
-    fn tkn_from_file_success() {
-        let token_json = r#"{
-  "access_token": "access_token_value",
-  "expires_in": 3600,
-  "refresh_token": "refresh_token_value",
-  "scope": "https://www.googleapis.com/auth/calendar.events",
-  "token_type": "Bearer"
-}"#;
-
-        assert!(fs::write("testfile.json", token_json).is_ok());
-
-        let tkn_res = tkn_from_file("testfile.json");
-        assert!(
-            tkn_res.is_ok(),
-            "expect to have succesfully deserialized a test token"
-        );
-        assert_eq!(
-            tkn_res.unwrap(),
-            Token {
-                access_token: String::from("access_token_value"),
-                expires_in: 3600,
-                refresh_token: Some(String::from("refresh_token_value")),
-                scope: Some(String::from(
-                    "https://www.googleapis.com/auth/calendar.events"
-                )),
-                token_type: String::from("Bearer"),
-            },
-            "deserialized token should match the test token"
-        );
-
-        fs::remove_file("testfile.json").expect("could not remove testfile.json");
-    }
-
-    #[test]
-    fn tkn_from_file_deserialize_error() {
-        let token_json = r#"{eapis.com/auth/calendar.events}"#;
-
-        assert!(fs::write("testfile_de_err.json", token_json).is_ok());
-
-        let expected_serde_err = serde_err::syntax(serde_errs::ErrorCode::KeyMustBeAString, 1, 2);
-        let expected_err_msg = expected_serde_err.to_string();
-
-        let tkn_err = tkn_from_file("testfile_de_err.json").unwrap_err();
-        assert_eq!(tkn_err, intern_err::JSONError(expected_serde_err));
-        assert_eq!(tkn_err.to_string(), expected_err_msg);
-        fs::remove_file("testfile_de_err.json").expect("could not remove testfile.json");
-    }
-
-    #[test]
-    fn tkn_from_file_read_error() {
-        let expected_io_err = io::Error::new(
-            io::ErrorKind::NotFound,
-            "No such file or directory (os error 2)",
-        );
-        let expected_io_err_msg = expected_io_err.to_string();
-
-        let tkn_err = tkn_from_file("non_existent_file.json").unwrap_err();
-
-        assert_eq!(tkn_err, errors::Error::IOError(expected_io_err));
-        assert_eq!(tkn_err.to_string(), expected_io_err_msg);
-    }
-
-    #[test]
-    fn auth_tkn_is_expired() {
-        let auth = Auth::new("myapp".to_owned(), PathBuf::new());
-
-        let token_json_fmt = |exp_v: u64| -> String {
-            format!(
-                r###"{{
-                        "access_token": "access_token_value",
-                        "expires_in": {exp_val},
-                        "refresh_token": "refresh_token_value",
-                        "scope": "https://www.googleapis.com/auth/calendar.events",
-                        "token_type": "Bearer"
-                    }}"###,
-                exp_val = exp_v
-            )
-        };
-
-        let test_cases = vec![
-            (
-                "expected: token is expired",
-                1,
-                2,
-                "expired_token.json",
-                true,
-            ),
-            (
-                "expected: token is not expired",
-                3600,
-                1,
-                "non_expired_token.json",
-                false,
-            ),
-        ];
-
-        for test_case in test_cases.into_iter() {
-            let (scenario, expires_in, sleep_secs, filename, expected_expired) = test_case;
-
-            let tkn_json = format!("{}", token_json_fmt(expires_in));
-            assert!(fs::write(filename, tkn_json).is_ok());
-
-            sleep(Duration::from_secs(sleep_secs));
-
-            let tkn_deserialized = tkn_from_file(filename)
-                .expect("expect to have successfully read test fixture file");
-
-            assert_eq!(
-                auth.tkn_is_expired(&tkn_deserialized, filename),
-                expected_expired,
-                "scenario failed: {}",
-                scenario,
-            );
-
-            fs::remove_file(filename).expect("could not remove test file");
-        }
-    }
-}
-
 #[macro_use]
 extern crate serde_derive;
 extern crate dirs;
@@ -365,4 +201,168 @@ fn tkn_from_file<P: AsRef<Path>>(p: P) -> Result<Token> {
     let b = fs::read(p)?;
     let tkn = serde_json::from_slice::<Token>(&b)?;
     Ok(tkn)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use errors::Error as intern_err;
+    use serde_json::error as serde_errs;
+    use serde_json::Error as serde_err;
+    use std::fs;
+    use std::io;
+    use std::thread::sleep;
+    use std::time::Duration;
+
+    #[test]
+    fn auth_tkn_path_success() {
+        let auth = Auth::new("myapp".to_owned(), PathBuf::new());
+
+        assert_eq!(
+            auth.tkn_path(),
+            Ok(dirs::home_dir().unwrap().join(".myapp")),
+            "expected token path format: $HOME/.{{app_name}}"
+        );
+    }
+
+    #[test]
+    fn auth_tkn_access_filekey_success() {
+        let auth = Auth::new("myapp".to_owned(), PathBuf::new());
+
+        assert_eq!(
+            auth.tkn_access_filekey(),
+            Ok(auth.tkn_path().unwrap().join("access_token.json")),
+            "expected token format: $HOME/.{{app_name}}/access_token.json"
+        );
+    }
+
+    #[test]
+    fn auth_tkn_refresh_filekey_success() {
+        let auth = Auth::new("myapp".to_owned(), PathBuf::new());
+
+        assert_eq!(
+            auth.tkn_refresh_filekey(),
+            Ok(auth.tkn_path().unwrap().join("refresh_token.json")),
+            "expected token format: $HOME/.{{app_name}}/refresh_token.json"
+        );
+    }
+
+    #[test]
+    fn tkn_from_file_success() {
+        let token_json = r#"{
+  "access_token": "access_token_value",
+  "expires_in": 3600,
+  "refresh_token": "refresh_token_value",
+  "scope": "https://www.googleapis.com/auth/calendar.events",
+  "token_type": "Bearer"
+}"#;
+
+        assert!(fs::write("testfile.json", token_json).is_ok());
+
+        let tkn_res = tkn_from_file("testfile.json");
+        assert!(
+            tkn_res.is_ok(),
+            "expect to have succesfully deserialized a test token"
+        );
+        assert_eq!(
+            tkn_res.unwrap(),
+            Token {
+                access_token: String::from("access_token_value"),
+                expires_in: 3600,
+                refresh_token: Some(String::from("refresh_token_value")),
+                scope: Some(String::from(
+                    "https://www.googleapis.com/auth/calendar.events"
+                )),
+                token_type: String::from("Bearer"),
+            },
+            "deserialized token should match the test token"
+        );
+
+        fs::remove_file("testfile.json").expect("could not remove testfile.json");
+    }
+
+    #[test]
+    fn tkn_from_file_deserialize_error() {
+        let token_json = r#"{eapis.com/auth/calendar.events}"#;
+
+        assert!(fs::write("testfile_de_err.json", token_json).is_ok());
+
+        let expected_serde_err = serde_err::syntax(serde_errs::ErrorCode::KeyMustBeAString, 1, 2);
+        let expected_err_msg = expected_serde_err.to_string();
+
+        let tkn_err = tkn_from_file("testfile_de_err.json").unwrap_err();
+        assert_eq!(tkn_err, intern_err::JSONError(expected_serde_err));
+        assert_eq!(tkn_err.to_string(), expected_err_msg);
+        fs::remove_file("testfile_de_err.json").expect("could not remove testfile.json");
+    }
+
+    #[test]
+    fn tkn_from_file_read_error() {
+        let expected_io_err = io::Error::new(
+            io::ErrorKind::NotFound,
+            "No such file or directory (os error 2)",
+        );
+        let expected_io_err_msg = expected_io_err.to_string();
+
+        let tkn_err = tkn_from_file("non_existent_file.json").unwrap_err();
+
+        assert_eq!(tkn_err, errors::Error::IOError(expected_io_err));
+        assert_eq!(tkn_err.to_string(), expected_io_err_msg);
+    }
+
+    #[test]
+    fn auth_tkn_is_expired() {
+        let auth = Auth::new("myapp".to_owned(), PathBuf::new());
+
+        let token_json_fmt = |exp_v: u64| -> String {
+            format!(
+                r###"{{
+                        "access_token": "access_token_value",
+                        "expires_in": {exp_val},
+                        "refresh_token": "refresh_token_value",
+                        "scope": "https://www.googleapis.com/auth/calendar.events",
+                        "token_type": "Bearer"
+                    }}"###,
+                exp_val = exp_v
+            )
+        };
+
+        let test_cases = vec![
+            (
+                "expected: token is expired",
+                1,
+                2,
+                "expired_token.json",
+                true,
+            ),
+            (
+                "expected: token is not expired",
+                3600,
+                1,
+                "non_expired_token.json",
+                false,
+            ),
+        ];
+
+        for test_case in test_cases.into_iter() {
+            let (scenario, expires_in, sleep_secs, filename, expected_expired) = test_case;
+
+            let tkn_json = format!("{}", token_json_fmt(expires_in));
+            assert!(fs::write(filename, tkn_json).is_ok());
+
+            sleep(Duration::from_secs(sleep_secs));
+
+            let tkn_deserialized = tkn_from_file(filename)
+                .expect("expect to have successfully read test fixture file");
+
+            assert_eq!(
+                auth.tkn_is_expired(&tkn_deserialized, filename),
+                expected_expired,
+                "scenario failed: {}",
+                scenario,
+            );
+
+            fs::remove_file(filename).expect("could not remove test file");
+        }
+    }
 }
