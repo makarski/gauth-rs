@@ -19,10 +19,12 @@ use std::time::{Duration, SystemTime};
 
 // Token configs
 const GRANT_TYPE: &str = "authorization_code";
+const VALIDATE_HOST: &str = "https://www.googleapis.com";
 
 pub struct Auth {
     app_name: String,
     crd_path: PathBuf,
+    validate_tkn_host: String,
     _http_client: reqwest::Client,
 }
 
@@ -31,6 +33,7 @@ impl Auth {
         Auth {
             app_name: app_name,
             crd_path: crd_path,
+            validate_tkn_host: VALIDATE_HOST.to_owned(),
             _http_client: reqwest::Client::new(),
         }
     }
@@ -61,14 +64,18 @@ impl Auth {
             })
     }
 
+    fn set_validate_host(&mut self, host: &str) {
+        self.validate_tkn_host = host.to_owned();
+    }
+
     fn tkn_is_valid<P: AsRef<Path>>(&self, tkn: &Token, p: P) -> bool {
         if !self.tkn_is_expired(tkn, p) {
             return true;
         }
 
         let url = format!(
-            "https://www.googleapis.com/oauth2/v3/tokeninfo?access_token={}",
-            tkn.access_token
+            "{}/oauth2/v3/tokeninfo?access_token={}",
+            self.validate_tkn_host, tkn.access_token
         );
 
         let resp = self._http_client.get(url.as_str()).send();
@@ -205,14 +212,18 @@ fn tkn_from_file<P: AsRef<Path>>(p: P) -> Result<Token> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use errors::Error as intern_err;
-    use serde_json::error as serde_errs;
-    use serde_json::Error as serde_err;
     use std::fs;
     use std::io;
     use std::thread::sleep;
     use std::time::Duration;
+
+    use mockito;
+    use mockito::mock;
+    use serde_json::error as serde_errs;
+    use serde_json::Error as serde_err;
+
+    use super::*;
+    use errors::Error as intern_err;
 
     #[test]
     fn auth_tkn_path_success() {
@@ -249,13 +260,7 @@ mod tests {
 
     #[test]
     fn tkn_from_file_success() {
-        let token_json = r#"{
-  "access_token": "access_token_value",
-  "expires_in": 3600,
-  "refresh_token": "refresh_token_value",
-  "scope": "https://www.googleapis.com/auth/calendar.events",
-  "token_type": "Bearer"
-}"#;
+        let token_json = generate_test_tkn_fixture(3600);
 
         assert!(fs::write("testfile.json", token_json).is_ok());
 
@@ -314,19 +319,6 @@ mod tests {
     fn auth_tkn_is_expired() {
         let auth = Auth::new("myapp".to_owned(), PathBuf::new());
 
-        let token_json_fmt = |exp_v: u64| -> String {
-            format!(
-                r###"{{
-                        "access_token": "access_token_value",
-                        "expires_in": {exp_val},
-                        "refresh_token": "refresh_token_value",
-                        "scope": "https://www.googleapis.com/auth/calendar.events",
-                        "token_type": "Bearer"
-                    }}"###,
-                exp_val = exp_v
-            )
-        };
-
         let test_cases = vec![
             (
                 "expected: token is expired",
@@ -347,7 +339,7 @@ mod tests {
         for test_case in test_cases.into_iter() {
             let (scenario, expires_in, sleep_secs, filename, expected_expired) = test_case;
 
-            let tkn_json = format!("{}", token_json_fmt(expires_in));
+            let tkn_json = format!("{}", generate_test_tkn_fixture(expires_in));
             assert!(fs::write(filename, tkn_json).is_ok());
 
             sleep(Duration::from_secs(sleep_secs));
@@ -364,5 +356,77 @@ mod tests {
 
             fs::remove_file(filename).expect("could not remove test file");
         }
+    }
+
+    #[test]
+    fn tkn_is_valid() {
+        let mut auth = Auth::new("my_test_app".to_owned(), PathBuf::new());
+        auth.set_validate_host(&mockito::server_url());
+
+        let test_cases = vec![
+            (
+                "expected: token is valid, 200 OK from google",
+                200..201,
+                true,
+            ),
+            (
+                "expected: token is not valid, google response status >= 100, < 200",
+                100..200,
+                false,
+            ),
+            (
+                "expected: token is not valid, google response status > 200, <= 511",
+                201..512,
+                false,
+            ),
+        ];
+
+        let filename = "test_token_name.json";
+        let expires_in = 1;
+
+        let tkn_json = format!("{}", generate_test_tkn_fixture(expires_in));
+        assert!(fs::write(filename, tkn_json).is_ok());
+
+        sleep(Duration::from_secs(expires_in + 1));
+
+        let tkn_deserialized =
+            tkn_from_file(filename).expect("expect to have successfully read test fixture file");
+
+        for test_case in test_cases.into_iter() {
+            let (scenario, status_code_range, expected) = test_case;
+
+            for status_code in status_code_range {
+                let m = mock(
+                    "GET",
+                    format!(
+                        "/oauth2/v3/tokeninfo?access_token={}",
+                        tkn_deserialized.access_token
+                    )
+                    .as_str(),
+                )
+                .with_status(status_code)
+                .create();
+
+                let actual = auth.tkn_is_valid(&tkn_deserialized, filename);
+                m.assert();
+                assert_eq!(actual, expected, "scenario failed: {}", scenario);
+                mockito::reset();
+            }
+        }
+
+        fs::remove_file(filename).expect("could not remove test token fixture");
+    }
+
+    fn generate_test_tkn_fixture(exp_v: u64) -> String {
+        format!(
+            r###"{{
+                        "access_token": "access_token_value",
+                        "expires_in": {exp_val},
+                        "refresh_token": "refresh_token_value",
+                        "scope": "https://www.googleapis.com/auth/calendar.events",
+                        "token_type": "Bearer"
+                    }}"###,
+            exp_val = exp_v
+        )
     }
 }
