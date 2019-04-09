@@ -417,6 +417,47 @@ mod tests {
         fs::remove_file(filename).expect("could not remove test token fixture");
     }
 
+    #[test]
+    fn tkn_exchange_success() {
+        let host = &mockito::server_url();
+
+        let crds = &OauthCredentials {
+            client_id: "myclient_id".to_owned(),
+            project_id: "myproject_id".to_owned(),
+            auth_uri: format!("{}/o/oauth2/auth", host),
+            token_uri: format!("{}/token", host),
+            auth_provider_x509_cert_url: format!("{}/oauth2/v1/certs", host),
+            client_secret: "myclientsecret".to_owned(),
+            redirect_uris: vec!["urn:redirect".to_owned(), "http://localhost".to_owned()],
+        };
+
+        let auth = Auth::new("mytestapp".to_owned(), PathBuf::new());
+        let expected = Token {
+            access_token: "expected_access_token".to_owned(),
+            expires_in: 3600,
+            refresh_token: Some("expected_refresh_token".to_owned()),
+            scope: Some("expected_scope".to_owned()),
+            token_type: "expected_token_type".to_owned(),
+        };
+
+        let m = mock("POST", "/token")
+            .match_header("content-type", "application/x-www-form-urlencoded")
+            .match_body("code=myauth_code&client_secret=myclientsecret&grant_type=authorization_code&client_id=myclient_id&redirect_uri=urn%3Aredirect")
+            .with_body(
+                serde_json::to_string(&expected).expect("test token successfully serialized"),
+            )
+            .create();
+
+        let obtained = auth.tkn_exchange("myauth_code".to_owned(), crds);
+        m.assert();
+        assert_eq!(
+            obtained,
+            Ok(expected),
+            "expect to have successfully obtained token"
+        );
+        mockito::reset();
+    }
+
     fn generate_test_tkn_fixture(exp_v: u64) -> String {
         format!(
             r###"{{
