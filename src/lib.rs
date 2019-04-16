@@ -619,7 +619,29 @@ mod tests {
         teardown_token_storage_dir();
     }
 
-    // fn tkn_save_success() {}
+    #[test]
+    fn tkn_save_success() {
+        setup_token_storage_dir();
+
+        let tkn_json = test_tkn_fixture_string(3600, Some("refresh_token"));
+        let token = test_tkn_fixture(tkn_json.as_bytes());
+
+        let auth = Auth::new("tkn_save_success".to_owned(), PathBuf::new());
+        let obtained = auth.tkn_save(token);
+
+        assert_eq!(obtained, Ok(test_tkn_fixture(tkn_json.as_bytes())));
+
+        let read_dir = fs::read_dir(env::var(TOKEN_DIR_ENV_NAME).unwrap())
+            .expect("tkn_save_success: expected to have successully read fixtures test dir");
+
+        assert_eq!(
+            read_dir.count(),
+            2,
+            "tkn_save_success: expect to have found 2 files"
+        );
+
+        teardown_token_storage_dir();
+    }
     // fn tkn_save_filekey_err() {}
     // fn tkn_save_dir_err() {}
     // fn tkn_save_tkn_path_err() {}
@@ -683,7 +705,6 @@ mod tests {
             ),
         ];
 
-
         for test_case in test_cases.into_iter() {
             let (scenario, token, is_custom_dir, expected_keys) = test_case;
 
@@ -710,11 +731,29 @@ mod tests {
     }
 
     fn setup_token_storage_dir() {
-        let wd = env::current_dir().expect("successfully retrieved current dir");
-        env::set_var(TOKEN_DIR_ENV_NAME, wd);
+        let fixture_dir = env::current_dir()
+            .and_then(|dir| {
+                let target_dir = dir.join(".test_fixtures");
+                DirBuilder::new()
+                    .recursive(true)
+                    .create(&target_dir)
+                    .expect("created test fixture dir");
+                return Ok(target_dir);
+            })
+            .map_err(|err| {
+                panic!(
+                    "successfully have retrieved and created test fixture dir: {}",
+                    err
+                )
+            });
+
+        env::set_var(TOKEN_DIR_ENV_NAME, fixture_dir.unwrap());
     }
 
     fn teardown_token_storage_dir() {
+        let env_dir = env::var(TOKEN_DIR_ENV_NAME).expect("successfully read env var");
+        fs::remove_dir_all(env_dir).expect("successfully cleared fixtures test directory");
+
         env::remove_var(TOKEN_DIR_ENV_NAME);
     }
 
