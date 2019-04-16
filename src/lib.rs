@@ -619,6 +619,96 @@ mod tests {
         teardown_token_storage_dir();
     }
 
+    // fn tkn_save_success() {}
+    // fn tkn_save_filekey_err() {}
+    // fn tkn_save_dir_err() {}
+    // fn tkn_save_tkn_path_err() {}
+    // fn tkn_save_file_create_err() {}
+    // fn tkn_save_write_json_err() {}
+
+    #[test]
+    fn tkn_filekeys_success() {
+        let access_tkn_json = test_tkn_fixture_string(3600, None);
+        let access_token = test_tkn_fixture(access_tkn_json.as_bytes());
+
+        let refresh_tkn_json = test_tkn_fixture_string(3600, Some("refresh_token"));
+        let refresh_token = test_tkn_fixture(refresh_tkn_json.as_bytes());
+
+        let home_dir =
+            dirs::home_dir().expect("tkn_filekeys_success: successfully retrieved home dir");
+
+        let custom_dir = PathBuf::from("custom_dir");
+
+        let test_name = "tkn_filekeys_success";
+        let auth = Auth::new(test_name.to_owned(), PathBuf::new());
+
+        let test_cases = vec![
+            (
+                "scenario: home_dir: token filekeys successfully generated for refresh token",
+                &refresh_token,
+                false,
+                vec![
+                    home_dir
+                        .join(format!(".{}", test_name))
+                        .join("access_token.json"),
+                    home_dir
+                        .join(format!(".{}", test_name))
+                        .join("refresh_token.json"),
+                ],
+
+            ),
+            (
+                "scenario: custom_dir: token filekeys successfully generated for refresh token",
+                &refresh_token,
+                true,
+                vec![
+                    custom_dir.join("access_token.json"),
+                    custom_dir.join("refresh_token.json"),
+                ],
+
+            ),
+            (
+                "scenario: home_dir: token filekeys successfully generated for access token",
+                &access_token,
+                false,
+                vec![home_dir
+                    .join(format!(".{}", test_name))
+                    .join("access_token.json")],
+            ),
+            (
+                "scenario: custom_dir: token filekeys successfully generated for access token",
+                &access_token,
+                true,
+                vec![custom_dir.join("access_token.json")],
+            ),
+        ];
+
+
+        for test_case in test_cases.into_iter() {
+            let (scenario, token, is_custom_dir, expected_keys) = test_case;
+
+            if is_custom_dir {
+                env::set_var(TOKEN_DIR_ENV_NAME, &custom_dir);
+            }
+
+            let obtained = auth.tkn_filekeys(token).unwrap();
+            assert_eq!(obtained.len(), expected_keys.len());
+
+            for (i, obtained_key) in obtained.iter().enumerate() {
+                assert_eq!(
+                    obtained_key.to_str().unwrap(),
+                    expected_keys.get(i).unwrap().to_str().unwrap(),
+                    "failed test case: {}",
+                    scenario,
+                );
+            }
+
+            if is_custom_dir {
+                env::remove_var(TOKEN_DIR_ENV_NAME);
+            }
+        }
+    }
+
     fn setup_token_storage_dir() {
         let wd = env::current_dir().expect("successfully retrieved current dir");
         env::set_var(TOKEN_DIR_ENV_NAME, wd);
