@@ -162,7 +162,7 @@ impl Auth {
     }
 
     fn cache_token(&self, tkn: Token) -> Result<Token> {
-        let keys = self.tkn_filekeys(&tkn)?;
+        let keys = self.token_filekeys(&tkn)?;
 
         for (index, key) in keys.iter().enumerate() {
             if index == 0 {
@@ -181,7 +181,7 @@ impl Auth {
         Ok(tkn)
     }
 
-    fn tkn_filekeys(&self, tkn: &Token) -> Result<Vec<PathBuf>> {
+    fn token_filekeys(&self, tkn: &Token) -> Result<Vec<PathBuf>> {
         let mut keys = vec![self.tkn_access_filekey()?];
 
         if tkn.is_refresh() {
@@ -653,7 +653,7 @@ mod tests {
     // fn cache_token_write_json_err() {}
 
     #[test]
-    fn tkn_filekeys_success() {
+    fn token_filekeys_success() {
         let access_tkn_json = test_tkn_fixture_string(3600, None);
         let access_token = test_tkn_fixture(access_tkn_json.as_bytes());
 
@@ -661,11 +661,11 @@ mod tests {
         let refresh_token = test_tkn_fixture(refresh_tkn_json.as_bytes());
 
         let home_dir =
-            dirs::home_dir().expect("tkn_filekeys_success: successfully retrieved home dir");
+            dirs::home_dir().expect("token_filekeys_success: successfully retrieved home dir");
 
         let custom_dir = PathBuf::from("custom_dir");
 
-        let test_name = "tkn_filekeys_success";
+        let test_name = "token_filekeys_success";
         let auth = Auth::new(test_name.to_owned(), PathBuf::new());
 
         let test_cases = vec![
@@ -716,7 +716,7 @@ mod tests {
                 env::set_var(TOKEN_DIR_ENV_NAME, &custom_dir);
             }
 
-            let obtained = auth.tkn_filekeys(token).unwrap();
+            let obtained = auth.token_filekeys(token).unwrap();
             assert_eq!(obtained.len(), expected_keys.len());
 
             for (i, obtained_key) in obtained.iter().enumerate() {
