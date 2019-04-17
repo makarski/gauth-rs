@@ -19,6 +19,7 @@ pub enum Error {
     UrlError(url::ParseError),
     RedirectUriCfgError,
     UserError(Box<dyn error::Error>),
+    RefreshTokenValue,
 }
 
 impl cmp::PartialEq for Error {
@@ -33,6 +34,7 @@ impl cmp::PartialEq for Error {
             (Error::UrlError(_), Error::UrlError(_)) => true,
             (Error::RedirectUriCfgError, Error::RedirectUriCfgError) => true,
             (Error::UserError(_), Error::UserError(_)) => true,
+            (Error::RefreshTokenValue, Error::RefreshTokenValue) => true,
             (_, _) => false,
         }
     }
@@ -53,6 +55,9 @@ impl fmt::Display for Error {
                 write!(f, "failed to retrieve redirect_uri from credentials")
             }
             Error::UserError(ref e) => e.fmt(f),
+            Error::RefreshTokenValue => {
+                write!(f, "expected a refresh token string value, got None")
+            }
         }
     }
 }
@@ -69,6 +74,7 @@ impl error::Error for Error {
             Error::HomeDirError => "failed to identify home directory",
             Error::RedirectUriCfgError => "failed to retrieve redirect_uri from credentials",
             Error::UserError(ref e) => e.description(),
+            Error::RefreshTokenValue => "expected a refresh token string value, got None",
         }
     }
 
@@ -83,6 +89,7 @@ impl error::Error for Error {
             Error::HomeDirError => None,
             Error::RedirectUriCfgError => None,
             Error::UserError(ref _e) => None, // todo: check if can use Some(e)
+            Error::RefreshTokenValue => None,
         }
     }
 }
