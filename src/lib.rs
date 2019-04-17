@@ -67,14 +67,14 @@ impl Auth {
                         get_auth_code(consent_uri).map_err(|err| Error::UserError(err))
                     })
                     .and_then(|auth_code| self.exchange_auth_code(auth_code, &crds_cfg))
-                    .and_then(|tkn| self.tkn_save(tkn))
+                    .and_then(|tkn| self.cache_token(tkn))
             })
             .and_then(|tkn| {
                 if self.tkn_is_valid(&tkn, tkn_filekey.as_path()) {
                     Ok(tkn)
                 } else {
                     self.refresh_token(&crds_cfg)
-                        .and_then(|tkn| self.tkn_save(tkn))
+                        .and_then(|tkn| self.cache_token(tkn))
                 }
             })
     }
@@ -161,7 +161,7 @@ impl Auth {
         Ok(tkn)
     }
 
-    fn tkn_save(&self, tkn: Token) -> Result<Token> {
+    fn cache_token(&self, tkn: Token) -> Result<Token> {
         let keys = self.tkn_filekeys(&tkn)?;
 
         for (index, key) in keys.iter().enumerate() {
@@ -624,33 +624,33 @@ mod tests {
     }
 
     #[test]
-    fn tkn_save_success() {
+    fn cache_token_success() {
         setup_token_storage_dir();
 
         let tkn_json = test_tkn_fixture_string(3600, Some("refresh_token"));
         let token = test_tkn_fixture(tkn_json.as_bytes());
 
-        let auth = Auth::new("tkn_save_success".to_owned(), PathBuf::new());
-        let obtained = auth.tkn_save(token);
+        let auth = Auth::new("cache_token_success".to_owned(), PathBuf::new());
+        let obtained = auth.cache_token(token);
 
         assert_eq!(obtained, Ok(test_tkn_fixture(tkn_json.as_bytes())));
 
         let read_dir = fs::read_dir(env::var(TOKEN_DIR_ENV_NAME).unwrap())
-            .expect("tkn_save_success: expected to have successully read fixtures test dir");
+            .expect("cache_token_success: expected to have successully read fixtures test dir");
 
         assert_eq!(
             read_dir.count(),
             2,
-            "tkn_save_success: expect to have found 2 files"
+            "cache_token_success: expect to have found 2 files"
         );
 
         teardown_token_storage_dir();
     }
-    // fn tkn_save_filekey_err() {}
-    // fn tkn_save_dir_err() {}
-    // fn tkn_save_tkn_path_err() {}
-    // fn tkn_save_file_create_err() {}
-    // fn tkn_save_write_json_err() {}
+    // fn cache_token_filekey_err() {}
+    // fn cache_token_dir_err() {}
+    // fn cache_token_tkn_path_err() {}
+    // fn cache_token_file_create_err() {}
+    // fn cache_token_write_json_err() {}
 
     #[test]
     fn tkn_filekeys_success() {
