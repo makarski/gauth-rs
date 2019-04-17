@@ -57,7 +57,7 @@ impl Auth {
     where
         F: Fn(String) -> result::Result<String, Box<dyn std_err::Error>>,
     {
-        let tkn_filekey = self.tkn_access_filekey()?;
+        let tkn_filekey = self.access_token_filekey()?;
         let crds_cfg = credentials::read_oauth_config(&self.crd_path)?.installed;
 
         tkn_from_file(tkn_filekey.as_path())
@@ -182,7 +182,7 @@ impl Auth {
     }
 
     fn token_filekeys(&self, tkn: &Token) -> Result<Vec<PathBuf>> {
-        let mut keys = vec![self.tkn_access_filekey()?];
+        let mut keys = vec![self.access_token_filekey()?];
 
         if tkn.is_refresh() {
             keys.push(self.refresh_token_filekey()?);
@@ -206,7 +206,7 @@ impl Auth {
         Ok(self.token_path()?.join("refresh_token.json"))
     }
 
-    fn tkn_access_filekey(&self) -> Result<PathBuf> {
+    fn access_token_filekey(&self) -> Result<PathBuf> {
         Ok(self.token_path()?.join("access_token.json"))
     }
 }
@@ -261,11 +261,11 @@ mod tests {
     }
 
     #[test]
-    fn auth_tkn_access_filekey_success() {
+    fn access_token_filekey_success() {
         let auth = Auth::new("myapp".to_owned(), PathBuf::new());
 
         assert_eq!(
-            auth.tkn_access_filekey(),
+            auth.access_token_filekey(),
             Ok(auth.token_path().unwrap().join("access_token.json")),
             "expected token format: $HOME/.{{app_name}}/access_token.json"
         );
