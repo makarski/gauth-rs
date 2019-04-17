@@ -191,7 +191,7 @@ impl Auth {
         Ok(keys)
     }
 
-    fn tkn_path(&self) -> Result<PathBuf> {
+    fn token_path(&self) -> Result<PathBuf> {
         if let Ok(tkn_dir) = env::var(TOKEN_DIR_ENV_NAME) {
             Ok(PathBuf::from(tkn_dir))
         } else {
@@ -203,11 +203,11 @@ impl Auth {
     }
 
     fn refresh_token_filekey(&self) -> Result<PathBuf> {
-        Ok(self.tkn_path()?.join("refresh_token.json"))
+        Ok(self.token_path()?.join("refresh_token.json"))
     }
 
     fn tkn_access_filekey(&self) -> Result<PathBuf> {
-        Ok(self.tkn_path()?.join("access_token.json"))
+        Ok(self.token_path()?.join("access_token.json"))
     }
 }
 
@@ -248,13 +248,13 @@ mod tests {
     use errors::Error as intern_err;
 
     #[test]
-    fn auth_tkn_path_success() {
+    fn token_path_success() {
         let auth = Auth::new("myapp".to_owned(), PathBuf::new());
 
         // todo: add checking from env var
 
         assert_eq!(
-            auth.tkn_path(),
+            auth.token_path(),
             Ok(dirs::home_dir().unwrap().join(".myapp")),
             "expected token path format: $HOME/.{{app_name}}"
         );
@@ -266,7 +266,7 @@ mod tests {
 
         assert_eq!(
             auth.tkn_access_filekey(),
-            Ok(auth.tkn_path().unwrap().join("access_token.json")),
+            Ok(auth.token_path().unwrap().join("access_token.json")),
             "expected token format: $HOME/.{{app_name}}/access_token.json"
         );
     }
@@ -277,7 +277,7 @@ mod tests {
 
         assert_eq!(
             auth.refresh_token_filekey(),
-            Ok(auth.tkn_path().unwrap().join("refresh_token.json")),
+            Ok(auth.token_path().unwrap().join("refresh_token.json")),
             "expected token format: $HOME/.{{app_name}}/refresh_token.json"
         );
     }
@@ -648,7 +648,7 @@ mod tests {
     }
     // fn cache_token_filekey_err() {}
     // fn cache_token_dir_err() {}
-    // fn cache_token_tkn_path_err() {}
+    // fn cache_token_token_path_err() {}
     // fn cache_token_file_create_err() {}
     // fn cache_token_write_json_err() {}
 
