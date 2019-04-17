@@ -66,7 +66,7 @@ impl Auth {
                     .and_then(|consent_uri| {
                         get_auth_code(consent_uri).map_err(|err| Error::UserError(err))
                     })
-                    .and_then(|auth_code| self.tkn_exchange(auth_code, &crds_cfg))
+                    .and_then(|auth_code| self.exchange_auth_code(auth_code, &crds_cfg))
                     .and_then(|tkn| self.tkn_save(tkn))
             })
             .and_then(|tkn| {
@@ -117,7 +117,11 @@ impl Auth {
         }
     }
 
-    fn tkn_exchange(&self, auth_code: String, credentials: &OauthCredentials) -> Result<Token> {
+    fn exchange_auth_code(
+        &self,
+        auth_code: String,
+        credentials: &OauthCredentials,
+    ) -> Result<Token> {
         let tkn = self
             ._http_client
             .post(credentials.token_uri.as_str())
@@ -445,7 +449,7 @@ mod tests {
     }
 
     #[test]
-    fn tkn_exchange_success() {
+    fn exchange_auth_code_success() {
         let host = &mockito::server_url();
 
         let crds = &test_credentials_fixture(host);
@@ -466,7 +470,7 @@ mod tests {
             )
             .create();
 
-        let obtained = auth.tkn_exchange("myauth_code".to_owned(), crds);
+        let obtained = auth.exchange_auth_code("myauth_code".to_owned(), crds);
         m.assert();
         assert_eq!(
             obtained,
@@ -477,7 +481,7 @@ mod tests {
     }
 
     #[test]
-    fn tkn_exchange_deserialize_error() {
+    fn exchange_auth_code_deserialize_error() {
         let host = &mockito::server_url();
 
         let crds = &test_credentials_fixture(host);
@@ -490,7 +494,7 @@ mod tests {
             .create();
 
         let obtained_err = auth
-            .tkn_exchange("myauth_code".to_owned(), crds)
+            .exchange_auth_code("myauth_code".to_owned(), crds)
             .unwrap_err();
 
         m.assert();
