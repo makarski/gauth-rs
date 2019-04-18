@@ -62,7 +62,7 @@ impl Auth {
 
         token_from_file(tkn_filekey.as_path())
             .or_else(|_| {
-                credentials::get_auth_code_uri(&crds_cfg, scope)
+                credentials::auth_code_uri_str(&crds_cfg, scope)
                     .and_then(|consent_uri| {
                         get_auth_code(consent_uri).map_err(|err| Error::UserError(err))
                     })
