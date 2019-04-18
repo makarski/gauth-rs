@@ -60,7 +60,7 @@ impl Auth {
         let tkn_filekey = self.access_token_filekey()?;
         let crds_cfg = credentials::read_oauth_config(&self.crd_path)?.installed;
 
-        tkn_from_file(tkn_filekey.as_path())
+        token_from_file(tkn_filekey.as_path())
             .or_else(|_| {
                 credentials::get_auth_code_uri(&crds_cfg, scope)
                     .and_then(|consent_uri| {
@@ -139,7 +139,7 @@ impl Auth {
     }
 
     fn refresh_token(&self, credentials: &OauthCredentials) -> Result<Token> {
-        let refresh_token = tkn_from_file(self.refresh_token_filekey()?)?;
+        let refresh_token = token_from_file(self.refresh_token_filekey()?)?;
 
         let refresh_tkn_str = match refresh_token.refresh_token {
             Some(t) => t,
@@ -226,7 +226,7 @@ impl Token {
     }
 }
 
-fn tkn_from_file<P: AsRef<Path>>(p: P) -> Result<Token> {
+fn token_from_file<P: AsRef<Path>>(p: P) -> Result<Token> {
     let b = fs::read(p)?;
     let tkn = serde_json::from_slice::<Token>(&b)?;
     Ok(tkn)
@@ -284,12 +284,12 @@ mod tests {
 
 
     #[test]
-    fn tkn_from_file_success() {
+    fn token_from_file_success() {
         let token_json = test_tkn_fixture_string(3600, Some("refresh_token_value"));
 
         assert!(fs::write("testfile.json", token_json).is_ok());
 
-        let tkn_res = tkn_from_file("testfile.json");
+        let tkn_res = token_from_file("testfile.json");
         assert!(
             tkn_res.is_ok(),
             "expect to have succesfully deserialized a test token"
@@ -312,7 +312,7 @@ mod tests {
     }
 
     #[test]
-    fn tkn_from_file_deserialize_error() {
+    fn token_from_file_deserialize_error() {
         let token_json = r#"{eapis.com/auth/calendar.events}"#;
 
         assert!(fs::write("testfile_de_err.json", token_json).is_ok());
@@ -320,21 +320,21 @@ mod tests {
         let expected_serde_err = serde_err::syntax(serde_errs::ErrorCode::KeyMustBeAString, 1, 2);
         let expected_err_msg = expected_serde_err.to_string();
 
-        let tkn_err = tkn_from_file("testfile_de_err.json").unwrap_err();
+        let tkn_err = token_from_file("testfile_de_err.json").unwrap_err();
         assert_eq!(tkn_err, intern_err::JSONError(expected_serde_err));
         assert_eq!(tkn_err.to_string(), expected_err_msg);
         fs::remove_file("testfile_de_err.json").expect("could not remove testfile.json");
     }
 
     #[test]
-    fn tkn_from_file_read_error() {
+    fn token_from_file_read_error() {
         let expected_io_err = io::Error::new(
             io::ErrorKind::NotFound,
             "No such file or directory (os error 2)",
         );
         let expected_io_err_msg = expected_io_err.to_string();
 
-        let tkn_err = tkn_from_file("non_existent_file.json").unwrap_err();
+        let tkn_err = token_from_file("non_existent_file.json").unwrap_err();
 
         assert_eq!(tkn_err, errors::Error::IOError(expected_io_err));
         assert_eq!(tkn_err.to_string(), expected_io_err_msg);
@@ -372,7 +372,7 @@ mod tests {
 
             sleep(Duration::from_secs(sleep_secs));
 
-            let tkn_deserialized = tkn_from_file(filename)
+            let tkn_deserialized = token_from_file(filename)
                 .expect("expect to have successfully read test fixture file");
 
             assert_eq!(
@@ -421,7 +421,7 @@ mod tests {
         sleep(Duration::from_secs(expires_in + 1));
 
         let tkn_deserialized =
-            tkn_from_file(filename).expect("expect to have successfully read test fixture file");
+            token_from_file(filename).expect("expect to have successfully read test fixture file");
 
         for test_case in test_cases.into_iter() {
             let (scenario, status_code_range, expected) = test_case;
