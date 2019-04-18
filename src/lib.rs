@@ -70,7 +70,7 @@ impl Auth {
                     .and_then(|tkn| self.cache_token(tkn))
             })
             .and_then(|tkn| {
-                if self.tkn_is_valid(&tkn, tkn_filekey.as_path()) {
+                if self.token_is_valid(&tkn, tkn_filekey.as_path()) {
                     Ok(tkn)
                 } else {
                     self.refresh_token(&crds_cfg)
@@ -83,7 +83,7 @@ impl Auth {
         self.validate_tkn_host = host.to_owned();
     }
 
-    fn tkn_is_valid<P: AsRef<Path>>(&self, tkn: &Token, p: P) -> bool {
+    fn token_is_valid<P: AsRef<Path>>(&self, tkn: &Token, p: P) -> bool {
         if !self.tkn_is_expired(tkn, p) {
             return true;
         }
@@ -387,7 +387,7 @@ mod tests {
     }
 
     #[test]
-    fn tkn_is_valid() {
+    fn token_is_valid() {
         let mut auth = Auth::new("my_test_app".to_owned(), PathBuf::new());
         auth.set_validate_host(&mockito::server_url());
 
@@ -438,7 +438,7 @@ mod tests {
                 .with_status(status_code)
                 .create();
 
-                let actual = auth.tkn_is_valid(&tkn_deserialized, filename);
+                let actual = auth.token_is_valid(&tkn_deserialized, filename);
                 m.assert();
                 assert_eq!(actual, expected, "scenario failed: {}", scenario);
                 mockito::reset();
