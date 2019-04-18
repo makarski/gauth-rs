@@ -84,7 +84,7 @@ impl Auth {
     }
 
     fn token_is_valid<P: AsRef<Path>>(&self, tkn: &Token, p: P) -> bool {
-        if !self.tkn_is_expired(tkn, p) {
+        if !self.token_is_expired(tkn, p) {
             return true;
         }
 
@@ -100,7 +100,7 @@ impl Auth {
         }
     }
 
-    fn tkn_is_expired<P: AsRef<Path>>(&self, tkn: &Token, p: P) -> bool {
+    fn token_is_expired<P: AsRef<Path>>(&self, tkn: &Token, p: P) -> bool {
         let f = fs::File::open(p);
         if f.is_err() {
             return true;
@@ -341,7 +341,7 @@ mod tests {
     }
 
     #[test]
-    fn auth_tkn_is_expired() {
+    fn token_is_expired() {
         let auth = Auth::new("myapp".to_owned(), PathBuf::new());
 
         let test_cases = vec![
@@ -376,7 +376,7 @@ mod tests {
                 .expect("expect to have successfully read test fixture file");
 
             assert_eq!(
-                auth.tkn_is_expired(&tkn_deserialized, filename),
+                auth.token_is_expired(&tkn_deserialized, filename),
                 expected_expired,
                 "scenario failed: {}",
                 scenario,
