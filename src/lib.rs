@@ -57,24 +57,24 @@ impl Auth {
     where
         F: Fn(String) -> result::Result<String, Box<dyn std_err::Error>>,
     {
-        let tkn_filekey = self.tkn_access_filekey()?;
+        let tkn_filekey = self.access_token_filekey()?;
         let crds_cfg = credentials::read_oauth_config(&self.crd_path)?.installed;
 
-        tkn_from_file(tkn_filekey.as_path())
+        token_from_file(tkn_filekey.as_path())
             .or_else(|_| {
-                credentials::get_auth_code_uri(&crds_cfg, scope)
+                credentials::auth_code_uri_str(&crds_cfg, scope)
                     .and_then(|consent_uri| {
                         get_auth_code(consent_uri).map_err(|err| Error::UserError(err))
                     })
-                    .and_then(|auth_code| self.tkn_exchange(auth_code, &crds_cfg))
-                    .and_then(|tkn| self.tkn_save(tkn))
+                    .and_then(|auth_code| self.exchange_auth_code(auth_code, &crds_cfg))
+                    .and_then(|tkn| self.cache_token(tkn))
             })
             .and_then(|tkn| {
-                if self.tkn_is_valid(&tkn, tkn_filekey.as_path()) {
+                if self.token_is_valid(&tkn, tkn_filekey.as_path()) {
                     Ok(tkn)
                 } else {
-                    self.tkn_refresh(&crds_cfg)
-                        .and_then(|tkn| self.tkn_save(tkn))
+                    self.refresh_token(&crds_cfg)
+                        .and_then(|tkn| self.cache_token(tkn))
                 }
             })
     }
@@ -83,8 +83,8 @@ impl Auth {
         self.validate_tkn_host = host.to_owned();
     }
 
-    fn tkn_is_valid<P: AsRef<Path>>(&self, tkn: &Token, p: P) -> bool {
-        if !self.tkn_is_expired(tkn, p) {
+    fn token_is_valid<P: AsRef<Path>>(&self, tkn: &Token, p: P) -> bool {
+        if !self.token_is_expired(tkn, p) {
             return true;
         }
 
@@ -100,7 +100,7 @@ impl Auth {
         }
     }
 
-    fn tkn_is_expired<P: AsRef<Path>>(&self, tkn: &Token, p: P) -> bool {
+    fn token_is_expired<P: AsRef<Path>>(&self, tkn: &Token, p: P) -> bool {
         let f = fs::File::open(p);
         if f.is_err() {
             return true;
@@ -117,7 +117,11 @@ impl Auth {
         }
     }
 
-    fn tkn_exchange(&self, auth_code: String, credentials: &OauthCredentials) -> Result<Token> {
+    fn exchange_auth_code(
+        &self,
+        auth_code: String,
+        credentials: &OauthCredentials,
+    ) -> Result<Token> {
         let tkn = self
             ._http_client
             .post(credentials.token_uri.as_str())
@@ -134,8 +138,8 @@ impl Auth {
         Ok(tkn)
     }
 
-    fn tkn_refresh(&self, credentials: &OauthCredentials) -> Result<Token> {
-        let refresh_token = tkn_from_file(self.tkn_refresh_filekey()?)?;
+    fn refresh_token(&self, credentials: &OauthCredentials) -> Result<Token> {
+        let refresh_token = token_from_file(self.refresh_token_filekey()?)?;
 
         let refresh_tkn_str = match refresh_token.refresh_token {
             Some(t) => t,
@@ -157,8 +161,8 @@ impl Auth {
         Ok(tkn)
     }
 
-    fn tkn_save(&self, tkn: Token) -> Result<Token> {
-        let keys = self.tkn_filekeys(&tkn)?;
+    fn cache_token(&self, tkn: Token) -> Result<Token> {
+        let keys = self.token_filekeys(&tkn)?;
 
         for (index, key) in keys.iter().enumerate() {
             if index == 0 {
@@ -177,17 +181,17 @@ impl Auth {
         Ok(tkn)
     }
 
-    fn tkn_filekeys(&self, tkn: &Token) -> Result<Vec<PathBuf>> {
-        let mut keys = vec![self.tkn_access_filekey()?];
+    fn token_filekeys(&self, tkn: &Token) -> Result<Vec<PathBuf>> {
+        let mut keys = vec![self.access_token_filekey()?];
 
         if tkn.is_refresh() {
-            keys.push(self.tkn_refresh_filekey()?);
+            keys.push(self.refresh_token_filekey()?);
         }
 
         Ok(keys)
     }
 
-    fn tkn_path(&self) -> Result<PathBuf> {
+    fn token_path(&self) -> Result<PathBuf> {
         if let Ok(tkn_dir) = env::var(TOKEN_DIR_ENV_NAME) {
             Ok(PathBuf::from(tkn_dir))
         } else {
@@ -198,12 +202,12 @@ impl Auth {
         }
     }
 
-    fn tkn_refresh_filekey(&self) -> Result<PathBuf> {
-        Ok(self.tkn_path()?.join("refresh_token.json"))
+    fn refresh_token_filekey(&self) -> Result<PathBuf> {
+        Ok(self.token_path()?.join("refresh_token.json"))
     }
 
-    fn tkn_access_filekey(&self) -> Result<PathBuf> {
-        Ok(self.tkn_path()?.join("access_token.json"))
+    fn access_token_filekey(&self) -> Result<PathBuf> {
+        Ok(self.token_path()?.join("access_token.json"))
     }
 }
 
@@ -222,7 +226,7 @@ impl Token {
     }
 }
 
-fn tkn_from_file<P: AsRef<Path>>(p: P) -> Result<Token> {
+fn token_from_file<P: AsRef<Path>>(p: P) -> Result<Token> {
     let b = fs::read(p)?;
     let tkn = serde_json::from_slice::<Token>(&b)?;
     Ok(tkn)
@@ -244,48 +248,48 @@ mod tests {
     use errors::Error as intern_err;
 
     #[test]
-    fn auth_tkn_path_success() {
+    fn token_path_success() {
         let auth = Auth::new("myapp".to_owned(), PathBuf::new());
 
         // todo: add checking from env var
 
         assert_eq!(
-            auth.tkn_path(),
+            auth.token_path(),
             Ok(dirs::home_dir().unwrap().join(".myapp")),
             "expected token path format: $HOME/.{{app_name}}"
         );
     }
 
     #[test]
-    fn auth_tkn_access_filekey_success() {
+    fn access_token_filekey_success() {
         let auth = Auth::new("myapp".to_owned(), PathBuf::new());
 
         assert_eq!(
-            auth.tkn_access_filekey(),
-            Ok(auth.tkn_path().unwrap().join("access_token.json")),
+            auth.access_token_filekey(),
+            Ok(auth.token_path().unwrap().join("access_token.json")),
             "expected token format: $HOME/.{{app_name}}/access_token.json"
         );
     }
 
     #[test]
-    fn auth_tkn_refresh_filekey_success() {
+    fn refresh_token_filekey_success() {
         let auth = Auth::new("myapp".to_owned(), PathBuf::new());
 
         assert_eq!(
-            auth.tkn_refresh_filekey(),
-            Ok(auth.tkn_path().unwrap().join("refresh_token.json")),
+            auth.refresh_token_filekey(),
+            Ok(auth.token_path().unwrap().join("refresh_token.json")),
             "expected token format: $HOME/.{{app_name}}/refresh_token.json"
         );
     }
 
 
     #[test]
-    fn tkn_from_file_success() {
+    fn token_from_file_success() {
         let token_json = test_tkn_fixture_string(3600, Some("refresh_token_value"));
 
         assert!(fs::write("testfile.json", token_json).is_ok());
 
-        let tkn_res = tkn_from_file("testfile.json");
+        let tkn_res = token_from_file("testfile.json");
         assert!(
             tkn_res.is_ok(),
             "expect to have succesfully deserialized a test token"
@@ -308,7 +312,7 @@ mod tests {
     }
 
     #[test]
-    fn tkn_from_file_deserialize_error() {
+    fn token_from_file_deserialize_error() {
         let token_json = r#"{eapis.com/auth/calendar.events}"#;
 
         assert!(fs::write("testfile_de_err.json", token_json).is_ok());
@@ -316,28 +320,28 @@ mod tests {
         let expected_serde_err = serde_err::syntax(serde_errs::ErrorCode::KeyMustBeAString, 1, 2);
         let expected_err_msg = expected_serde_err.to_string();
 
-        let tkn_err = tkn_from_file("testfile_de_err.json").unwrap_err();
+        let tkn_err = token_from_file("testfile_de_err.json").unwrap_err();
         assert_eq!(tkn_err, intern_err::JSONError(expected_serde_err));
         assert_eq!(tkn_err.to_string(), expected_err_msg);
         fs::remove_file("testfile_de_err.json").expect("could not remove testfile.json");
     }
 
     #[test]
-    fn tkn_from_file_read_error() {
+    fn token_from_file_read_error() {
         let expected_io_err = io::Error::new(
             io::ErrorKind::NotFound,
             "No such file or directory (os error 2)",
         );
         let expected_io_err_msg = expected_io_err.to_string();
 
-        let tkn_err = tkn_from_file("non_existent_file.json").unwrap_err();
+        let tkn_err = token_from_file("non_existent_file.json").unwrap_err();
 
         assert_eq!(tkn_err, errors::Error::IOError(expected_io_err));
         assert_eq!(tkn_err.to_string(), expected_io_err_msg);
     }
 
     #[test]
-    fn auth_tkn_is_expired() {
+    fn token_is_expired() {
         let auth = Auth::new("myapp".to_owned(), PathBuf::new());
 
         let test_cases = vec![
@@ -368,11 +372,11 @@ mod tests {
 
             sleep(Duration::from_secs(sleep_secs));
 
-            let tkn_deserialized = tkn_from_file(filename)
+            let tkn_deserialized = token_from_file(filename)
                 .expect("expect to have successfully read test fixture file");
 
             assert_eq!(
-                auth.tkn_is_expired(&tkn_deserialized, filename),
+                auth.token_is_expired(&tkn_deserialized, filename),
                 expected_expired,
                 "scenario failed: {}",
                 scenario,
@@ -383,7 +387,7 @@ mod tests {
     }
 
     #[test]
-    fn tkn_is_valid() {
+    fn token_is_valid() {
         let mut auth = Auth::new("my_test_app".to_owned(), PathBuf::new());
         auth.set_validate_host(&mockito::server_url());
 
@@ -417,7 +421,7 @@ mod tests {
         sleep(Duration::from_secs(expires_in + 1));
 
         let tkn_deserialized =
-            tkn_from_file(filename).expect("expect to have successfully read test fixture file");
+            token_from_file(filename).expect("expect to have successfully read test fixture file");
 
         for test_case in test_cases.into_iter() {
             let (scenario, status_code_range, expected) = test_case;
@@ -434,7 +438,7 @@ mod tests {
                 .with_status(status_code)
                 .create();
 
-                let actual = auth.tkn_is_valid(&tkn_deserialized, filename);
+                let actual = auth.token_is_valid(&tkn_deserialized, filename);
                 m.assert();
                 assert_eq!(actual, expected, "scenario failed: {}", scenario);
                 mockito::reset();
@@ -445,7 +449,7 @@ mod tests {
     }
 
     #[test]
-    fn tkn_exchange_success() {
+    fn exchange_auth_code_success() {
         let host = &mockito::server_url();
 
         let crds = &test_credentials_fixture(host);
@@ -466,7 +470,7 @@ mod tests {
             )
             .create();
 
-        let obtained = auth.tkn_exchange("myauth_code".to_owned(), crds);
+        let obtained = auth.exchange_auth_code("myauth_code".to_owned(), crds);
         m.assert();
         assert_eq!(
             obtained,
@@ -477,7 +481,7 @@ mod tests {
     }
 
     #[test]
-    fn tkn_exchange_deserialize_error() {
+    fn exchange_auth_code_deserialize_error() {
         let host = &mockito::server_url();
 
         let crds = &test_credentials_fixture(host);
@@ -490,7 +494,7 @@ mod tests {
             .create();
 
         let obtained_err = auth
-            .tkn_exchange("myauth_code".to_owned(), crds)
+            .exchange_auth_code("myauth_code".to_owned(), crds)
             .unwrap_err();
 
         m.assert();
@@ -503,15 +507,15 @@ mod tests {
     }
 
     #[test]
-    fn tkn_refresh_success() {
+    fn refresh_token_success() {
         setup_token_storage_dir();
 
         let host = &mockito::server_url();
-        let auth = Auth::new("tkn_refresh_test".to_owned(), PathBuf::new());
+        let auth = Auth::new("refresh_token_test".to_owned(), PathBuf::new());
 
         let refresh_tkn_json = test_tkn_fixture_string(3600, Some("test_refresh_token"));
         assert!(fs::write(
-            auth.tkn_refresh_filekey()
+            auth.refresh_token_filekey()
                 .expect("successfully generated refresh token filekey"),
             refresh_tkn_json,
         )
@@ -526,7 +530,7 @@ mod tests {
             .create();
 
         let credentials = test_credentials_fixture(host);
-        let obtained = auth.tkn_refresh(&credentials);
+        let obtained = auth.refresh_token(&credentials);
         m.assert();
 
         let expected = test_tkn_fixture(expected_string.as_bytes());
@@ -534,15 +538,15 @@ mod tests {
 
         mockito::reset();
 
-        fs::remove_file(auth.tkn_refresh_filekey().unwrap())
+        fs::remove_file(auth.refresh_token_filekey().unwrap())
             .expect("could not remove test token fixture");
 
         teardown_token_storage_dir();
     }
 
     #[test]
-    fn tkn_refresh_read_err() {
-        let auth = Auth::new("tkn_refresh_read_err".to_owned(), PathBuf::new());
+    fn refresh_token_read_err() {
+        let auth = Auth::new("refresh_token_read_err".to_owned(), PathBuf::new());
         let crds = &test_credentials_fixture("somehost");
 
         let expected_io_err = io::Error::new(
@@ -553,45 +557,45 @@ mod tests {
         let expected_err_msg = expected_io_err.to_string();
 
         let expected_err = Error::IOError(expected_io_err);
-        let obtained_err = auth.tkn_refresh(crds).unwrap_err();
+        let obtained_err = auth.refresh_token(crds).unwrap_err();
 
         assert_eq!(obtained_err, expected_err);
         assert_eq!(obtained_err.to_string(), expected_err_msg);
     }
 
     #[test]
-    fn tkn_refresh_empty_refresh_val() {
+    fn refresh_token_empty_refresh_val() {
         setup_token_storage_dir();
 
-        let auth = Auth::new("tkn_refresh_read_err".to_owned(), PathBuf::new());
+        let auth = Auth::new("refresh_token_read_err".to_owned(), PathBuf::new());
         let crds = &test_credentials_fixture("somehost");
 
         let refresh_tkn_json = test_tkn_fixture_string(3600, None);
         assert!(fs::write(
-            auth.tkn_refresh_filekey()
+            auth.refresh_token_filekey()
                 .expect("successfully generated refresh token filekey"),
             refresh_tkn_json,
         )
         .is_ok());
 
-        let obtained_err = auth.tkn_refresh(crds).unwrap_err();
+        let obtained_err = auth.refresh_token(crds).unwrap_err();
         assert_eq!(obtained_err, Error::RefreshTokenValue);
 
-        fs::remove_file(auth.tkn_refresh_filekey().unwrap())
+        fs::remove_file(auth.refresh_token_filekey().unwrap())
             .expect("could not remove test token fixture");
 
         teardown_token_storage_dir();
     }
 
     #[test]
-    fn tkn_refresh_unmarshal_err() {
+    fn refresh_token_unmarshal_err() {
         setup_token_storage_dir();
 
-        let auth = Auth::new("tkn_refresh_unmarshal_err".to_owned(), PathBuf::new());
+        let auth = Auth::new("refresh_token_unmarshal_err".to_owned(), PathBuf::new());
 
         let refresh_tkn_json = test_tkn_fixture_string(3600, Some("refresh_token"));
         assert!(fs::write(
-            auth.tkn_refresh_filekey()
+            auth.refresh_token_filekey()
                 .expect("successfully generated refresh token filekey"),
             refresh_tkn_json,
         )
@@ -602,7 +606,7 @@ mod tests {
 
         let m = mock("POST", "/token").with_body("{aaaaa").create();
 
-        let obtained_err = auth.tkn_refresh(crds).unwrap_err();
+        let obtained_err = auth.refresh_token(crds).unwrap_err();
         m.assert();
 
         assert!(
@@ -613,43 +617,43 @@ mod tests {
 
         mockito::reset();
 
-        fs::remove_file(auth.tkn_refresh_filekey().unwrap())
+        fs::remove_file(auth.refresh_token_filekey().unwrap())
             .expect("could not remove test token fixture");
 
         teardown_token_storage_dir();
     }
 
     #[test]
-    fn tkn_save_success() {
+    fn cache_token_success() {
         setup_token_storage_dir();
 
         let tkn_json = test_tkn_fixture_string(3600, Some("refresh_token"));
         let token = test_tkn_fixture(tkn_json.as_bytes());
 
-        let auth = Auth::new("tkn_save_success".to_owned(), PathBuf::new());
-        let obtained = auth.tkn_save(token);
+        let auth = Auth::new("cache_token_success".to_owned(), PathBuf::new());
+        let obtained = auth.cache_token(token);
 
         assert_eq!(obtained, Ok(test_tkn_fixture(tkn_json.as_bytes())));
 
         let read_dir = fs::read_dir(env::var(TOKEN_DIR_ENV_NAME).unwrap())
-            .expect("tkn_save_success: expected to have successully read fixtures test dir");
+            .expect("cache_token_success: expected to have successully read fixtures test dir");
 
         assert_eq!(
             read_dir.count(),
             2,
-            "tkn_save_success: expect to have found 2 files"
+            "cache_token_success: expect to have found 2 files"
         );
 
         teardown_token_storage_dir();
     }
-    // fn tkn_save_filekey_err() {}
-    // fn tkn_save_dir_err() {}
-    // fn tkn_save_tkn_path_err() {}
-    // fn tkn_save_file_create_err() {}
-    // fn tkn_save_write_json_err() {}
+    // fn cache_token_filekey_err() {}
+    // fn cache_token_dir_err() {}
+    // fn cache_token_token_path_err() {}
+    // fn cache_token_file_create_err() {}
+    // fn cache_token_write_json_err() {}
 
     #[test]
-    fn tkn_filekeys_success() {
+    fn token_filekeys_success() {
         let access_tkn_json = test_tkn_fixture_string(3600, None);
         let access_token = test_tkn_fixture(access_tkn_json.as_bytes());
 
@@ -657,11 +661,11 @@ mod tests {
         let refresh_token = test_tkn_fixture(refresh_tkn_json.as_bytes());
 
         let home_dir =
-            dirs::home_dir().expect("tkn_filekeys_success: successfully retrieved home dir");
+            dirs::home_dir().expect("token_filekeys_success: successfully retrieved home dir");
 
         let custom_dir = PathBuf::from("custom_dir");
 
-        let test_name = "tkn_filekeys_success";
+        let test_name = "token_filekeys_success";
         let auth = Auth::new(test_name.to_owned(), PathBuf::new());
 
         let test_cases = vec![
@@ -712,7 +716,7 @@ mod tests {
                 env::set_var(TOKEN_DIR_ENV_NAME, &custom_dir);
             }
 
-            let obtained = auth.tkn_filekeys(token).unwrap();
+            let obtained = auth.token_filekeys(token).unwrap();
             assert_eq!(obtained.len(), expected_keys.len());
 
             for (i, obtained_key) in obtained.iter().enumerate() {
