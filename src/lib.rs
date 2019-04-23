@@ -667,6 +667,8 @@ mod tests {
 
         teardown_token_storage_dir();
     }
+
+    // TODO: add the following tests
     // fn cache_token_filekey_err() {}
     // fn cache_token_dir_err() {}
     // fn cache_token_token_path_err() {}
