@@ -44,9 +44,9 @@ pub struct Auth {
 }
 
 impl Auth {
-    pub fn new(app_name: String, crd_path: PathBuf) -> Auth {
+    pub fn new<S: AsRef<str>>(app_name: S, crd_path: PathBuf) -> Auth {
         Auth {
-            app_name: app_name,
+            app_name: app_name.as_ref().to_string(),
             crd_path: crd_path,
             validate_token_host: validate_host(),
             _http_client: reqwest::Client::new(),
@@ -270,7 +270,7 @@ mod tests {
 
     #[test]
     fn token_path_success() {
-        let auth = Auth::new("token_path_success".to_owned(), PathBuf::new());
+        let auth = Auth::new("token_path_success", PathBuf::new());
 
         let test_cases = vec![
             (
@@ -302,7 +302,7 @@ mod tests {
 
     #[test]
     fn access_token_filekey_success() {
-        let auth = Auth::new("myapp".to_owned(), PathBuf::new());
+        let auth = Auth::new("myapp", PathBuf::new());
 
         assert_eq!(
             auth.access_token_filekey(),
@@ -313,7 +313,7 @@ mod tests {
 
     #[test]
     fn refresh_token_filekey_success() {
-        let auth = Auth::new("myapp".to_owned(), PathBuf::new());
+        let auth = Auth::new("myapp", PathBuf::new());
 
         assert_eq!(
             auth.refresh_token_filekey(),
@@ -370,7 +370,7 @@ mod tests {
 
     #[test]
     fn token_is_expired() {
-        let auth = Auth::new("token_is_expired".to_owned(), PathBuf::new());
+        let auth = Auth::new("token_is_expired", PathBuf::new());
 
         let test_cases = vec![
             (
@@ -414,7 +414,7 @@ mod tests {
     #[test]
     fn token_is_valid() {
         setup_token_validate_host();
-        let auth = Auth::new("token_is_valid".to_owned(), PathBuf::new());
+        let auth = Auth::new("token_is_valid", PathBuf::new());
 
         let test_cases = vec![
             (
@@ -476,7 +476,7 @@ mod tests {
         let host = &mockito::server_url();
 
         let crds = &test_credentials_fixture(host);
-        let auth = Auth::new("exchange_auth_code_success".to_owned(), PathBuf::new());
+        let auth = Auth::new("exchange_auth_code_success", PathBuf::new());
 
         let expected_token_str = test_token_fixture_string(3600, Some("expected_refresh_token"));
         let expected_token = test_token_fixture(&expected_token_str.as_bytes());
@@ -502,10 +502,7 @@ mod tests {
         let host = &mockito::server_url();
 
         let crds = &test_credentials_fixture(host);
-        let auth = Auth::new(
-            "exchange_auth_code_deserialize_error".to_owned(),
-            PathBuf::new(),
-        );
+        let auth = Auth::new("exchange_auth_code_deserialize_error", PathBuf::new());
 
         let m = mock("POST", "/token")
             .match_header("content-type", "application/x-www-form-urlencoded")
@@ -532,7 +529,7 @@ mod tests {
         setup_token_storage_dir();
 
         let host = &mockito::server_url();
-        let auth = Auth::new("refresh_token_test".to_owned(), PathBuf::new());
+        let auth = Auth::new("refresh_token_test", PathBuf::new());
 
         let refresh_tkn_json = test_token_fixture_string(3600, Some("test_refresh_token"));
         assert!(fs::write(
@@ -567,7 +564,7 @@ mod tests {
 
     #[test]
     fn refresh_token_read_err() {
-        let auth = Auth::new("refresh_token_read_err".to_owned(), PathBuf::new());
+        let auth = Auth::new("refresh_token_read_err", PathBuf::new());
         let crds = &test_credentials_fixture("somehost");
 
         let expected_io_err = io::Error::new(
@@ -588,7 +585,7 @@ mod tests {
     fn refresh_token_empty_refresh_val() {
         setup_token_storage_dir();
 
-        let auth = Auth::new("refresh_token_read_err".to_owned(), PathBuf::new());
+        let auth = Auth::new("refresh_token_read_err", PathBuf::new());
         let crds = &test_credentials_fixture("somehost");
 
         let refresh_tkn_json = test_token_fixture_string(3600, None);
@@ -612,7 +609,7 @@ mod tests {
     fn refresh_token_unmarshal_err() {
         setup_token_storage_dir();
 
-        let auth = Auth::new("refresh_token_unmarshal_err".to_owned(), PathBuf::new());
+        let auth = Auth::new("refresh_token_unmarshal_err", PathBuf::new());
 
         let refresh_tkn_json = test_token_fixture_string(3600, Some("refresh_token"));
         assert!(fs::write(
@@ -651,7 +648,7 @@ mod tests {
         let tkn_json = test_token_fixture_string(3600, Some("refresh_token"));
         let token = test_token_fixture(tkn_json.as_bytes());
 
-        let auth = Auth::new("cache_token_success".to_owned(), PathBuf::new());
+        let auth = Auth::new("cache_token_success", PathBuf::new());
         let obtained = auth.cache_token(token);
 
         assert_eq!(obtained, Ok(test_token_fixture(tkn_json.as_bytes())));
@@ -689,7 +686,7 @@ mod tests {
         let custom_dir = PathBuf::from("custom_dir");
 
         let test_name = "token_filekeys_success";
-        let auth = Auth::new(test_name.to_owned(), PathBuf::new());
+        let auth = Auth::new(test_name, PathBuf::new());
 
         let test_cases = vec![
             (
