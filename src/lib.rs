@@ -238,17 +238,34 @@ fn validate_host() -> String {
 }
 
 mod tests {
+    #[cfg(test)]
     use std::fs;
+
+    #[cfg(test)]
     use std::io;
+
+    #[cfg(test)]
     use std::thread::sleep;
+
+    #[cfg(test)]
     use std::time::Duration;
 
+    #[cfg(test)]
     use mockito;
+
+    #[cfg(test)]
     use mockito::mock;
+
+    #[cfg(test)]
     use serde_json::error as serde_errs;
+
+    #[cfg(test)]
     use serde_json::Error as serde_err;
 
+    #[cfg(test)]
     use super::*;
+
+    #[cfg(test)]
     use errors::Error as intern_err;
 
     #[test]
@@ -308,26 +325,14 @@ mod tests {
 
     #[test]
     fn token_from_file_success() {
-        let token_json = test_tkn_fixture_string(3600, Some("refresh_token_value"));
+        let token_json = test_token_fixture_string(3600, Some("refresh_token_value"));
+        assert!(fs::write("testfile.json", &token_json).is_ok());
 
-        assert!(fs::write("testfile.json", token_json).is_ok());
-
+        let expected = test_token_fixture(token_json.as_bytes());
         let tkn_res = token_from_file("testfile.json");
-        assert!(
-            tkn_res.is_ok(),
-            "expect to have succesfully deserialized a test token"
-        );
         assert_eq!(
-            tkn_res.unwrap(),
-            Token {
-                access_token: String::from("access_token_value"),
-                expires_in: 3600,
-                refresh_token: Some(String::from("refresh_token_value")),
-                scope: Some(String::from(
-                    "https://www.googleapis.com/auth/calendar.events"
-                )),
-                token_type: String::from("Bearer"),
-            },
+            tkn_res,
+            Ok(expected),
             "deserialized token should match the test token"
         );
 
@@ -337,7 +342,6 @@ mod tests {
     #[test]
     fn token_from_file_deserialize_error() {
         let token_json = r#"{eapis.com/auth/calendar.events}"#;
-
         assert!(fs::write("testfile_de_err.json", token_json).is_ok());
 
         let expected_serde_err = serde_err::syntax(serde_errs::ErrorCode::KeyMustBeAString, 1, 2);
@@ -346,6 +350,7 @@ mod tests {
         let tkn_err = token_from_file("testfile_de_err.json").unwrap_err();
         assert_eq!(tkn_err, intern_err::JSONError(expected_serde_err));
         assert_eq!(tkn_err.to_string(), expected_err_msg);
+
         fs::remove_file("testfile_de_err.json").expect("could not remove testfile.json");
     }
 
@@ -372,25 +377,22 @@ mod tests {
                 "expected: token is expired",
                 1,
                 2,
-                "expired_token.json",
+                "test_token_is_expired_expired_token.json",
                 true,
             ),
             (
                 "expected: token is not expired",
                 3600,
                 1,
-                "non_expired_token.json",
+                "test_token_is_expired_non_expired_token.json",
                 false,
             ),
         ];
 
         for test_case in test_cases.into_iter() {
-            let (scenario, expires_in, sleep_secs, filename, expected_expired) = test_case;
+            let (scenario, expires_in, sleep_secs, filename, expected_is_expired) = test_case;
 
-            let tkn_json = format!(
-                "{}",
-                test_tkn_fixture_string(expires_in, Some("refresh_token"))
-            );
+            let tkn_json = test_token_fixture_string(expires_in, Some("refresh_token"));
             assert!(fs::write(filename, tkn_json).is_ok());
 
             sleep(Duration::from_secs(sleep_secs));
@@ -400,7 +402,7 @@ mod tests {
 
             assert_eq!(
                 auth.token_is_expired(&tkn_deserialized, filename),
-                expected_expired,
+                expected_is_expired,
                 "scenario failed: {}",
                 scenario,
             );
@@ -432,13 +434,10 @@ mod tests {
             ),
         ];
 
-        let filename = "test_token_name.json";
+        let filename = "test_token_is_valid_token_name.json";
         let expires_in = 1;
 
-        let tkn_json = format!(
-            "{}",
-            test_tkn_fixture_string(expires_in, Some("refresh_token"))
-        );
+        let tkn_json = test_token_fixture_string(expires_in, Some("refresh_token"));
         assert!(fs::write(filename, tkn_json).is_ok());
 
         sleep(Duration::from_secs(expires_in + 1));
@@ -477,28 +476,22 @@ mod tests {
         let host = &mockito::server_url();
 
         let crds = &test_credentials_fixture(host);
-        let auth = Auth::new("mytestapp".to_owned(), PathBuf::new());
-        let expected = Token {
-            access_token: "expected_access_token".to_owned(),
-            expires_in: 3600,
-            refresh_token: Some("expected_refresh_token".to_owned()),
-            scope: Some("expected_scope".to_owned()),
-            token_type: "expected_token_type".to_owned(),
-        };
+        let auth = Auth::new("exchange_auth_code_success".to_owned(), PathBuf::new());
+
+        let expected_token_str = test_token_fixture_string(3600, Some("expected_refresh_token"));
+        let expected_token = test_token_fixture(&expected_token_str.as_bytes());
 
         let m = mock("POST", "/token")
             .match_header("content-type", "application/x-www-form-urlencoded")
             .match_body("code=myauth_code&client_secret=myclientsecret&grant_type=authorization_code&client_id=myclient_id&redirect_uri=urn%3Aredirect")
-            .with_body(
-                serde_json::to_string(&expected).expect("test token successfully serialized"),
-            )
+            .with_body(&expected_token_str)
             .create();
 
         let obtained = auth.exchange_auth_code("myauth_code".to_owned(), crds);
         m.assert();
         assert_eq!(
             obtained,
-            Ok(expected),
+            Ok(expected_token),
             "expect to have successfully obtained token"
         );
         mockito::reset();
@@ -509,7 +502,10 @@ mod tests {
         let host = &mockito::server_url();
 
         let crds = &test_credentials_fixture(host);
-        let auth = Auth::new("mytestapp".to_owned(), PathBuf::new());
+        let auth = Auth::new(
+            "exchange_auth_code_deserialize_error".to_owned(),
+            PathBuf::new(),
+        );
 
         let m = mock("POST", "/token")
             .match_header("content-type", "application/x-www-form-urlencoded")
@@ -527,6 +523,7 @@ mod tests {
             "expect to get a json unmarshal error, actual: {}",
             obtained_err.to_string(),
         );
+
         mockito::reset();
     }
 
@@ -537,7 +534,7 @@ mod tests {
         let host = &mockito::server_url();
         let auth = Auth::new("refresh_token_test".to_owned(), PathBuf::new());
 
-        let refresh_tkn_json = test_tkn_fixture_string(3600, Some("test_refresh_token"));
+        let refresh_tkn_json = test_token_fixture_string(3600, Some("test_refresh_token"));
         assert!(fs::write(
             auth.refresh_token_filekey()
                 .expect("successfully generated refresh token filekey"),
@@ -545,7 +542,7 @@ mod tests {
         )
         .is_ok());
 
-        let expected_string = test_tkn_fixture_string(3600, None);
+        let expected_string = test_token_fixture_string(3600, None);
 
         let m = mockito::mock("POST", "/token")
             .match_header("content-type", "application/x-www-form-urlencoded")
@@ -557,7 +554,7 @@ mod tests {
         let obtained = auth.refresh_token(&credentials);
         m.assert();
 
-        let expected = test_tkn_fixture(expected_string.as_bytes());
+        let expected = test_token_fixture(expected_string.as_bytes());
         assert_eq!(obtained, Ok(expected));
 
         mockito::reset();
@@ -594,7 +591,7 @@ mod tests {
         let auth = Auth::new("refresh_token_read_err".to_owned(), PathBuf::new());
         let crds = &test_credentials_fixture("somehost");
 
-        let refresh_tkn_json = test_tkn_fixture_string(3600, None);
+        let refresh_tkn_json = test_token_fixture_string(3600, None);
         assert!(fs::write(
             auth.refresh_token_filekey()
                 .expect("successfully generated refresh token filekey"),
@@ -617,7 +614,7 @@ mod tests {
 
         let auth = Auth::new("refresh_token_unmarshal_err".to_owned(), PathBuf::new());
 
-        let refresh_tkn_json = test_tkn_fixture_string(3600, Some("refresh_token"));
+        let refresh_tkn_json = test_token_fixture_string(3600, Some("refresh_token"));
         assert!(fs::write(
             auth.refresh_token_filekey()
                 .expect("successfully generated refresh token filekey"),
@@ -651,13 +648,13 @@ mod tests {
     fn cache_token_success() {
         setup_token_storage_dir();
 
-        let tkn_json = test_tkn_fixture_string(3600, Some("refresh_token"));
-        let token = test_tkn_fixture(tkn_json.as_bytes());
+        let tkn_json = test_token_fixture_string(3600, Some("refresh_token"));
+        let token = test_token_fixture(tkn_json.as_bytes());
 
         let auth = Auth::new("cache_token_success".to_owned(), PathBuf::new());
         let obtained = auth.cache_token(token);
 
-        assert_eq!(obtained, Ok(test_tkn_fixture(tkn_json.as_bytes())));
+        assert_eq!(obtained, Ok(test_token_fixture(tkn_json.as_bytes())));
 
         let read_dir = fs::read_dir(env::var(TOKEN_DIR_ENV_NAME).unwrap())
             .expect("cache_token_success: expected to have successully read fixtures test dir");
@@ -678,11 +675,11 @@ mod tests {
 
     #[test]
     fn token_filekeys_success() {
-        let access_tkn_json = test_tkn_fixture_string(3600, None);
-        let access_token = test_tkn_fixture(access_tkn_json.as_bytes());
+        let access_tkn_json = test_token_fixture_string(3600, None);
+        let access_token = test_token_fixture(access_tkn_json.as_bytes());
 
-        let refresh_tkn_json = test_tkn_fixture_string(3600, Some("refresh_token"));
-        let refresh_token = test_tkn_fixture(refresh_tkn_json.as_bytes());
+        let refresh_tkn_json = test_token_fixture_string(3600, Some("refresh_token"));
+        let refresh_token = test_token_fixture(refresh_tkn_json.as_bytes());
 
         let home_dir =
             dirs::home_dir().expect("token_filekeys_success: successfully retrieved home dir");
@@ -758,6 +755,7 @@ mod tests {
         }
     }
 
+    #[cfg(test)]
     fn setup_token_storage_dir() {
         let fixture_dir = env::current_dir()
             .and_then(|dir| {
@@ -778,6 +776,7 @@ mod tests {
         env::set_var(TOKEN_DIR_ENV_NAME, fixture_dir.unwrap());
     }
 
+    #[cfg(test)]
     fn teardown_token_storage_dir() {
         let env_dir = env::var(TOKEN_DIR_ENV_NAME).expect("successfully read env var");
         fs::remove_dir_all(env_dir).expect("successfully cleared fixtures test directory");
@@ -785,14 +784,17 @@ mod tests {
         env::remove_var(TOKEN_DIR_ENV_NAME);
     }
 
+    #[cfg(test)]
     fn setup_token_validate_host() {
         env::set_var(VALIDATE_HOST_ENV_NAME, &mockito::server_url());
     }
 
+    #[cfg(test)]
     fn teardown_token_validate_host() {
         env::remove_var(VALIDATE_HOST_ENV_NAME);
     }
 
+    #[cfg(test)]
     fn test_credentials_fixture(host: &str) -> OauthCredentials {
         OauthCredentials {
             client_id: "myclient_id".to_owned(),
@@ -805,11 +807,13 @@ mod tests {
         }
     }
 
-    fn test_tkn_fixture(b: &[u8]) -> Token {
+    #[cfg(test)]
+    fn test_token_fixture(b: &[u8]) -> Token {
         serde_json::from_slice::<Token>(b).expect("successfully unmarshalled test token string")
     }
 
-    fn test_tkn_fixture_string(exp_v: u64, refresh_value: Option<&str>) -> String {
+    #[cfg(test)]
+    fn test_token_fixture_string(exp_v: u64, refresh_value: Option<&str>) -> String {
         let refresh = match refresh_value {
             Some(t) => format!("\"{}\"", t),
             None => "null".to_owned(),
