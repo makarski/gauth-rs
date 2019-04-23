@@ -22,24 +22,24 @@ use std::time::{Duration, SystemTime};
 const GRANT_TYPE: &str = "authorization_code";
 const VALIDATE_HOST: &str = "https://www.googleapis.com";
 
-// VALIDATE_HOST_ENV_NAME holds the name of the env var
-// that used to validate the token.
-// If env is not set the default google host is used.
-//
-// This configuration is intended in the first place for
-// the testing purposes
+/// VALIDATE_HOST_ENV_NAME holds the name of the env var
+/// that used to validate the token.
+/// If env is not set the default google host is used.
+///
+/// This configuration is intended in the first place for
+/// the testing purposes
 const VALIDATE_HOST_ENV_NAME: &str = "GAUTH_VALIDATE_HOST";
 
-// TOKEN_DIR_ENV_NAME holds the name of the env var
-// that is used to configure the directory for storing tokens.
-//
-// If not set, $HOME will be used as the default value.
+/// TOKEN_DIR_ENV_NAME holds the name of the env var
+/// that is used to configure the directory for storing tokens.
+///
+/// If not set, $HOME will be used as the default value.
 const TOKEN_DIR_ENV_NAME: &str = "GAUTH_TOKEN_DIR";
 
 pub struct Auth {
     app_name: String,
     crd_path: PathBuf,
-    validate_tkn_host: String,
+    validate_token_host: String,
     _http_client: reqwest::Client,
 }
 
@@ -48,7 +48,7 @@ impl Auth {
         Auth {
             app_name: app_name,
             crd_path: crd_path,
-            validate_tkn_host: VALIDATE_HOST.to_owned(),
+            validate_token_host: validate_host(),
             _http_client: reqwest::Client::new(),
         }
     }
@@ -79,10 +79,6 @@ impl Auth {
             })
     }
 
-    fn set_validate_host(&mut self, host: &str) {
-        self.validate_tkn_host = host.to_owned();
-    }
-
     fn token_is_valid<P: AsRef<Path>>(&self, tkn: &Token, p: P) -> bool {
         if !self.token_is_expired(tkn, p) {
             return true;
@@ -90,7 +86,7 @@ impl Auth {
 
         let url = format!(
             "{}/oauth2/v3/tokeninfo?access_token={}",
-            self.validate_tkn_host, tkn.access_token
+            self.validate_token_host, tkn.access_token
         );
 
         let resp = self._http_client.get(url.as_str()).send();
@@ -232,7 +228,15 @@ fn token_from_file<P: AsRef<Path>>(p: P) -> Result<Token> {
     Ok(tkn)
 }
 
-#[cfg(test)]
+/// Returns the value set in `GAUTH_VALIDATE_HOST` or default
+fn validate_host() -> String {
+    if let Ok(env_host) = env::var(VALIDATE_HOST_ENV_NAME) {
+        return env_host;
+    }
+
+    VALIDATE_HOST.to_owned()
+}
+
 mod tests {
     use std::fs;
     use std::io;
@@ -249,15 +253,36 @@ mod tests {
 
     #[test]
     fn token_path_success() {
-        let auth = Auth::new("myapp".to_owned(), PathBuf::new());
+        let auth = Auth::new("token_path_success".to_owned(), PathBuf::new());
 
-        // todo: add checking from env var
+        let test_cases = vec![
+            (
+                "expected token path format: mydir",
+                Some("mydir"),
+                Ok(PathBuf::from("mydir")),
+            ),
+            (
+                "expected token path format: $HOME/.{{app_name}}",
+                None,
+                Ok(dirs::home_dir().unwrap().join(".token_path_success")),
+            ),
+        ];
 
-        assert_eq!(
-            auth.token_path(),
-            Ok(dirs::home_dir().unwrap().join(".myapp")),
-            "expected token path format: $HOME/.{{app_name}}"
-        );
+        for test_case in test_cases.into_iter() {
+            let (scenario, env_host, expected) = test_case;
+
+            if env_host.is_some() {
+                env::set_var(TOKEN_DIR_ENV_NAME, env_host.unwrap());
+            }
+
+            assert_eq!(auth.token_path(), expected, "scenario failed: {}", scenario);
+
+            if env_host.is_some() {
+                env::remove_var(TOKEN_DIR_ENV_NAME);
+            }
+
+        }
+
     }
 
     #[test]
@@ -342,7 +367,7 @@ mod tests {
 
     #[test]
     fn token_is_expired() {
-        let auth = Auth::new("myapp".to_owned(), PathBuf::new());
+        let auth = Auth::new("token_is_expired".to_owned(), PathBuf::new());
 
         let test_cases = vec![
             (
@@ -388,8 +413,8 @@ mod tests {
 
     #[test]
     fn token_is_valid() {
-        let mut auth = Auth::new("my_test_app".to_owned(), PathBuf::new());
-        auth.set_validate_host(&mockito::server_url());
+        setup_token_validate_host();
+        let auth = Auth::new("token_is_valid".to_owned(), PathBuf::new());
 
         let test_cases = vec![
             (
@@ -446,6 +471,7 @@ mod tests {
         }
 
         fs::remove_file(filename).expect("could not remove test token fixture");
+        teardown_token_validate_host();
     }
 
     #[test]
