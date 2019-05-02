@@ -324,7 +324,6 @@ mod tests {
         );
     }
 
-
     #[test]
     fn token_from_file_success() {
         let token_json = test_token_fixture_string(3600, Some("refresh_token_value"));
@@ -707,7 +706,6 @@ mod tests {
                         .join(format!(".{}", test_name))
                         .join("refresh_token.json"),
                 ],
-
             ),
             (
                 "scenario: custom_dir: token filekeys successfully generated for refresh token",
@@ -717,7 +715,6 @@ mod tests {
                     custom_dir.join("access_token.json"),
                     custom_dir.join("refresh_token.json"),
                 ],
-
             ),
             (
                 "scenario: home_dir: token filekeys successfully generated for access token",
