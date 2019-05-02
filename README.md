@@ -7,11 +7,11 @@ Going forward support for [Loopback IP redirect](https://developers.google.com/i
 
 ### Prerequisites
 
-1. Create your application in [Google API Console](https://console.developers.google.com/apis/credentials)
-   a. `Credentials` > `Create credentials` > `OAuth client ID`
-   b. Set application type to `Other`
-   c. Enter your application name
-   d. `Download JSON` configuration of newly created application
+1. Create your application in [Google API Console](https://console.developers.google.com/apis/credentials)  
+   a. `Credentials` > `Create credentials` > `OAuth client ID`  
+   b. Set application type to `Other`  
+   c. Enter your application name  
+   d. `Download JSON` configuration of newly created application  
 
 ### Example
 
