@@ -55,9 +55,9 @@ fn auth_code_uri(credentials: &OauthCredentials, scope: &str) -> Result<url::Url
     ];
 
     for (k, v) in params.into_iter() {
-        &mut uri.query_pairs_mut().append_pair(k, v);
+        uri.query_pairs_mut().append_pair(k, v);
     }
 
-    &mut uri.query_pairs_mut().finish();
+    uri.query_pairs_mut().finish();
     Ok(uri)
 }

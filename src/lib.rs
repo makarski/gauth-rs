@@ -49,7 +49,7 @@ impl Auth {
         Auth {
             app_name: app_name.as_ref().to_string(),
             scope: scopes[..].join(" "),
-            crd_path: crd_path,
+            crd_path,
             validate_token_host: validate_host(),
             _http_client: reqwest::Client::new(),
         }
@@ -111,7 +111,7 @@ impl Auth {
 
         match m.unwrap().modified() {
             Ok(time) => time.add(Duration::from_secs(tkn.expires_in)) < SystemTime::now(),
-            _ => return true,
+            _ => true,
         }
     }
 
@@ -239,36 +239,11 @@ fn validate_host() -> String {
     VALIDATE_HOST.to_owned()
 }
 
+#[cfg(test)]
 mod tests {
-    #[cfg(test)]
-    use std::fs;
-
-    #[cfg(test)]
-    use std::io;
-
-    #[cfg(test)]
-    use std::thread::sleep;
-
-    #[cfg(test)]
-    use std::time::Duration;
-
-    #[cfg(test)]
-    use mockito;
-
-    #[cfg(test)]
-    use mockito::mock;
-
-    #[cfg(test)]
-    use serde_json::error as serde_errs;
-
-    #[cfg(test)]
-    use serde_json::Error as serde_err;
-
-    #[cfg(test)]
     use super::*;
-
-    #[cfg(test)]
-    use errors::Error as intern_err;
+    use mockito::mock;
+    use std::{fs, io, thread::sleep, time::Duration};
 
     #[test]
     fn token_path_success() {
@@ -290,8 +265,8 @@ mod tests {
         for test_case in test_cases.into_iter() {
             let (scenario, env_host, expected) = test_case;
 
-            if env_host.is_some() {
-                env::set_var(TOKEN_DIR_ENV_NAME, env_host.unwrap());
+            if let Some(host) = env_host {
+                env::set_var(TOKEN_DIR_ENV_NAME, host);
             }
 
             assert_eq!(auth.token_path(), expected, "scenario failed: {}", scenario);
@@ -345,12 +320,8 @@ mod tests {
         let token_json = r#"{eapis.com/auth/calendar.events}"#;
         assert!(fs::write("testfile_de_err.json", token_json).is_ok());
 
-        let expected_serde_err = serde_err::syntax(serde_errs::ErrorCode::KeyMustBeAString, 1, 2);
-        let expected_err_msg = expected_serde_err.to_string();
-
-        let tkn_err = token_from_file("testfile_de_err.json").unwrap_err();
-        assert_eq!(tkn_err, intern_err::JSONError(expected_serde_err));
-        assert_eq!(tkn_err.to_string(), expected_err_msg);
+        let tkn_err = token_from_file("testfile_de_err.json");
+        assert!(tkn_err.is_err());
 
         fs::remove_file("testfile_de_err.json").expect("could not remove testfile.json");
     }
@@ -760,16 +731,16 @@ mod tests {
     #[cfg(test)]
     fn setup_token_storage_dir() {
         let fixture_dir = env::current_dir()
-            .and_then(|dir| {
+            .map(|dir| {
                 let target_dir = dir.join(".test_fixtures");
                 DirBuilder::new()
                     .recursive(true)
                     .create(&target_dir)
                     .expect("created test fixture dir");
-                return Ok(target_dir);
+                target_dir
             })
             .map_err(|err| {
-                panic!(
+                format!(
                     "successfully have retrieved and created test fixture dir: {}",
                     err
                 )

@@ -22,6 +22,9 @@ pub enum Error {
     RefreshTokenValue,
 }
 
+unsafe impl Send for Error {}
+unsafe impl Sync for Error {}
+
 impl cmp::PartialEq for Error {
     fn eq(&self, other: &Error) -> bool {
         match (&self, other) {
@@ -50,7 +53,7 @@ impl fmt::Display for Error {
             Error::EnvVarError(ref e) => e.fmt(f),
             Error::ReqwestError(ref e) => e.fmt(f),
             Error::UrlError(ref e) => e.fmt(f),
-            Error::HomeDirError => write!(f, "{}", "failed to identify home directory"),
+            Error::HomeDirError => write!(f, "failed to identify home directory"),
             Error::RedirectUriCfgError => {
                 write!(f, "failed to retrieve redirect_uri from credentials")
             }
@@ -62,37 +65,7 @@ impl fmt::Display for Error {
     }
 }
 
-impl error::Error for Error {
-    fn description(&self) -> &str {
-        match *self {
-            Error::TokenPathError => "failed to retrieve token dir from filekey",
-            Error::IOError(ref e) => e.description(),
-            Error::JSONError(ref e) => e.description(),
-            Error::EnvVarError(ref e) => e.description(),
-            Error::ReqwestError(ref e) => e.description(),
-            Error::UrlError(ref e) => e.description(),
-            Error::HomeDirError => "failed to identify home directory",
-            Error::RedirectUriCfgError => "failed to retrieve redirect_uri from credentials",
-            Error::UserError(ref e) => e.description(),
-            Error::RefreshTokenValue => "expected a refresh token string value, got None",
-        }
-    }
-
-    fn cause(&self) -> Option<&error::Error> {
-        match *self {
-            Error::TokenPathError => None,
-            Error::IOError(ref e) => Some(e),
-            Error::JSONError(ref e) => Some(e),
-            Error::EnvVarError(ref e) => Some(e),
-            Error::ReqwestError(ref e) => Some(e),
-            Error::UrlError(ref e) => Some(e),
-            Error::HomeDirError => None,
-            Error::RedirectUriCfgError => None,
-            Error::UserError(ref _e) => None, // todo: check if can use Some(e)
-            Error::RefreshTokenValue => None,
-        }
-    }
-}
+impl error::Error for Error {}
 
 impl From<io::Error> for Error {
     fn from(err: io::Error) -> Error {

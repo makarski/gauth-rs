@@ -1,4 +1,4 @@
-rust_google_auth
+rust_google_oauth2
 ================
 
 The library currently supports **Google OAuth2** flow for [installed](https://developers.google.com/identity/protocols/OAuth2?hl=en_US#installed) desktop applications and has been initally tested with [manual copy/paste](https://developers.google.com/identity/protocols/OAuth2InstalledApp#redirect-uri_oob-manual) (_of authorization code_) redirect method.
