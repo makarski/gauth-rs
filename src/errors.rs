@@ -1,10 +1,5 @@
 use serde_json::error as serde_err;
-use std::cmp;
-use std::env;
-use std::error;
-use std::fmt;
-use std::io;
-use std::result;
+use std::{cmp, env, error, fmt, io, result};
 
 pub type Result<T> = result::Result<T, Error>;
 

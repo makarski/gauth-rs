@@ -1,6 +1,9 @@
-use crate::errors::{Error, Result};
 use std::path::Path;
+
+use serde_derive::Deserialize;
 use url::Url;
+
+use crate::errors::{Error, Result};
 
 // Auth code configs
 const AUTH_CODE_RESP_TYPE: &str = "code";

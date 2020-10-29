@@ -1,22 +1,19 @@
-#[macro_use]
-extern crate serde_derive;
-extern crate dirs;
-extern crate reqwest;
+use std::{
+    env, error as std_err, fs,
+    fs::{DirBuilder, File},
+    ops::Add,
+    path::{Path, PathBuf},
+    result,
+    time::{Duration, SystemTime},
+};
+
+use serde_derive::{Deserialize, Serialize};
 
 mod credentials;
 use credentials::OauthCredentials;
 
 mod errors;
 use errors::{Error, Result};
-
-use std::env;
-use std::error as std_err;
-use std::fs;
-use std::fs::{DirBuilder, File};
-use std::ops::Add;
-use std::path::{Path, PathBuf};
-use std::result;
-use std::time::{Duration, SystemTime};
 
 // Token configs
 const GRANT_TYPE: &str = "authorization_code";
