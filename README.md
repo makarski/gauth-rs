@@ -33,8 +33,8 @@ fn main() {
 
     let auth_client = gauth::Auth::new(
         "my-new-application",
-        vec![
-            "https://www.googleapis.com/auth/drive.readonly".to_owned(),
+        &[
+            "https://www.googleapis.com/auth/drive.readonly",
         ],
         PathBuf::from("/my-google-credentials/oauth-credentials.json"),
     );
