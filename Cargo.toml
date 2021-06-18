@@ -1,6 +1,6 @@
 [package]
 name = "rust_google_oauth2"
-version = "0.3.0"
+version = "0.3.1"
 authors = ["Siamion Makarski <s.makarski.s@gmail.com>"]
 edition = "2018"
 

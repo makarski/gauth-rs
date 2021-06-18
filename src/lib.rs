@@ -1,5 +1,7 @@
 use std::{
-    env, error as std_err, fs,
+    env, error as std_err,
+    fmt::{Display, Error as fmt_err, Formatter},
+    fs,
     fs::{DirBuilder, File},
     ops::Add,
     path::{Path, PathBuf},
@@ -218,6 +220,12 @@ pub struct Token {
 impl Token {
     fn is_refresh(&self) -> bool {
         self.refresh_token.is_some()
+    }
+}
+
+impl Display for Token {
+    fn fmt(&self, f: &mut Formatter<'_>) -> result::Result<(), fmt_err> {
+        write!(f, "{} {}", self.token_type, self.access_token)
     }
 }
 
