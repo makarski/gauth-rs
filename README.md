@@ -13,11 +13,14 @@ Going forward support for [Loopback IP redirect](https://developers.google.com/i
    c. Enter your application name  
    d. `Download JSON` configuration of newly created application  
 
-### Example
+## Example
+```toml
+[dependencies]
+gauth = "0.3.1"
+```
+Sample client implementation
 
-```rust
-extern crate rust_google_oauth2 as gauth;
-
+```rust,no_run
 fn main() {
     // define consent URL handler
     // returns an auth. code which is then exchanged against access token
@@ -46,3 +49,10 @@ fn main() {
     println!("obtained token: {:?}", token);
 }
 ```
+
+## License
+
+License under either or:
+
+* [MIT](LICENSE-MIT)
+* [Apache License, Version 2.0](LICENSE-APACHE)

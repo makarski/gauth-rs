@@ -1,8 +1,14 @@
 [package]
-name = "rust_google_oauth2"
+description = "HTTP Client for Google OAuth2"
+name = "gauth"
 version = "0.3.1"
-authors = ["Siamion Makarski <s.makarski.s@gmail.com>"]
-edition = "2018"
+authors = ["Simon Makarski <code@makarski.dev>"]
+edition = "2021"
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+repository = "https://github.com/makarski/rust_google_oauth2"
+keywords = ["google-oauth2"]
+categories = ["api-bindings"]
 
 [dependencies]
 url = "1.7.2"
