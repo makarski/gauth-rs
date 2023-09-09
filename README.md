@@ -1,11 +1,18 @@
 rust_google_oauth2
 ================
 
-The library currently supports **Google OAuth2** flow for [installed](https://developers.google.com/identity/protocols/OAuth2?hl=en_US#installed) desktop applications and has been initally tested with [manual copy/paste](https://developers.google.com/identity/protocols/OAuth2InstalledApp#redirect-uri_oob-manual) (_of authorization code_) redirect method.
+The library supports the following flows:
 
-Going forward support for [Loopback IP redirect](https://developers.google.com/identity/protocols/OAuth2InstalledApp#redirect-uri_loopback) is planned to be added.
+* [OAuth2 for installed apps](https://developers.google.com/identity/protocols/oauth2#installed)
+* [Service Accounts](https://developers.google.com/identity/protocols/oauth2/service-account)
 
-### Prerequisites
+
+```toml
+[dependencies]
+gauth = "0.4.0"
+```
+
+#### OAuth2
 
 1. Create your application in [Google API Console](https://console.developers.google.com/apis/credentials)  
    a. `Credentials` > `Create credentials` > `OAuth client ID`  
@@ -13,11 +20,7 @@ Going forward support for [Loopback IP redirect](https://developers.google.com/i
    c. Enter your application name  
    d. `Download JSON` configuration of newly created application  
 
-## Example
-```toml
-[dependencies]
-gauth = "0.3.1"
-```
+
 Sample client implementation
 
 ```rust,no_run
@@ -47,6 +50,25 @@ fn main() {
         .expect("failed to retrieve access token");
 
     println!("obtained token: {:?}", token);
+}
+```
+
+#### Service Account
+
+Follow instructions for [creating a service account](https://developers.google.com/identity/protocols/oauth2/service-account#creatinganaccount). After a service account key has been created,
+it can be used to obtain an access token.
+
+```rust,no_run
+use gauth::serv_account::ServiceAccount;
+
+fn access_token() {
+    let scopes = vec!["https://www.googleapis.com/auth/drive"];
+    let key_path = "test_fixtures/service-account-key.json";
+
+    let mut service_account = ServiceAccount::from_file(key_path, scopes);
+    let access_token = service_account.access_token().unwrap();
+
+    println!("access token {}:", access_token);
 }
 ```
 

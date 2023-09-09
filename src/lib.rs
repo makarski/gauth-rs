@@ -17,6 +17,8 @@ use credentials::OauthCredentials;
 mod errors;
 use errors::{Error, Result};
 
+pub mod serv_account;
+
 // Token configs
 const GRANT_TYPE: &str = "authorization_code";
 const VALIDATE_HOST: &str = "https://www.googleapis.com";

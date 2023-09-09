@@ -1,7 +1,7 @@
 [package]
 description = "HTTP Client for Google OAuth2"
 name = "gauth"
-version = "0.3.1"
+version = "0.4.0"
 authors = ["Simon Makarski <code@makarski.dev>"]
 edition = "2021"
 license = "MIT OR Apache-2.0"
@@ -18,3 +18,7 @@ serde_derive = "1"
 dirs = "1.0"
 reqwest = "0.9.11"
 mockito = "0.17.0"
+chrono = "0.4.28"
+base64 = "0.21.3"
+ring = "0.16.20"
+thiserror = "1.0.48"
