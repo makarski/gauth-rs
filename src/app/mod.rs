@@ -4,8 +4,8 @@ use std::result::Result as StdResult;
 use std::{env, path};
 
 use chrono::Utc;
-use serde::Deserialize;
-use serde_derive::Serialize;
+use reqwest::blocking::Client as HttpClient;
+use serde_derive::{Deserialize, Serialize};
 
 use super::credentials;
 use super::errors::{Error, Result};
@@ -26,7 +26,7 @@ pub struct Auth {
     consent_uri: String,
 
     token_validate_host: String,
-    http_client: reqwest::Client,
+    http_client: HttpClient,
 }
 
 /// Access token
@@ -73,7 +73,7 @@ impl Auth {
             oauth_creds,
             consent_uri,
             token_validate_host: GOOGLE_VALIDATE_HOST.to_owned(),
-            http_client: reqwest::Client::new(),
+            http_client: HttpClient::new(),
         })
     }
 
@@ -258,7 +258,7 @@ mod tests {
                 redirect_uris: vec!["urn:ietf:wg:oauth:2.0:oob".to_owned()],
             },
             token_validate_host: google_host.to_owned(),
-            http_client: reqwest::Client::new(),
+            http_client: HttpClient::new(),
         };
 
         let auth = auth.handler(auth_handler);

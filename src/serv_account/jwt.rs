@@ -1,5 +1,5 @@
 use super::errors::{Result, ServiceAccountError};
-use serde::Serialize;
+use serde_derive::Serialize;
 
 #[derive(Clone, Debug, Default, Serialize)]
 pub struct JwtToken {

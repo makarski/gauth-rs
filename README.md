@@ -18,7 +18,7 @@ gauth = "0.5.0"
    a. `Credentials` > `Create credentials` > `OAuth client ID`  
    b. Set application type to `Other`  
    c. Enter your application name  
-   d. `Download JSON` configuration of newly created application  
+   d. `Download JSON` configuration of the newly created application  
 
 
 **Client implementation with defaults**
@@ -39,7 +39,7 @@ fn main() {
 
 **Custom app name and handler**: access token will be stored in `$HOME/.{app_name}/access_token.json`
 
-To assign a custom directory for caching access tokens, assign a value to env var: `GAUTH_TOKEN_DIR`
+To assign a custom directory as access token caching, set env var value: `GAUTH_TOKEN_DIR`
 
 ```rust,no_run
 use gauth::app::Auth;

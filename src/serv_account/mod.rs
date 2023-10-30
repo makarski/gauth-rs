@@ -1,5 +1,6 @@
 use chrono::Utc;
 use errors::Result;
+use reqwest::blocking::Client as HttpClient;
 
 mod errors;
 mod jwt;
@@ -13,10 +14,10 @@ pub struct ServiceAccount {
     access_token: Option<String>,
     expires_at: Option<u64>,
 
-    http_client: reqwest::Client,
+    http_client: HttpClient,
 }
 
-#[derive(Debug, serde::Deserialize)]
+#[derive(Debug, serde_derive::Deserialize)]
 struct Token {
     access_token: String,
     expires_in: u64,
@@ -40,7 +41,7 @@ impl ServiceAccount {
             access_token: None,
             expires_at: None,
 
-            http_client: reqwest::Client::new(),
+            http_client: HttpClient::new(),
         }
     }
 
@@ -75,7 +76,7 @@ impl ServiceAccount {
     }
 
     fn exchange_jwt_token_for_access_token(&mut self, jwt_token: jwt::JwtToken) -> Result<Token> {
-        let mut resp = self
+        let resp = self
             .http_client
             .post(jwt_token.token_uri())
             .form(&[
