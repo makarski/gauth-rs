@@ -3,7 +3,7 @@ use std::path::Path;
 use serde_derive::Deserialize;
 use url::Url;
 
-use crate::errors::{Error, Result};
+use super::errors::{AuthError, Result};
 
 // Auth code configs
 const AUTH_CODE_RESP_TYPE: &str = "code";
@@ -29,7 +29,9 @@ pub struct OauthCredentials {
 
 impl OauthCredentials {
     pub fn redirect_uri(&self) -> Result<&String> {
-        self.redirect_uris.get(0).ok_or(Error::RedirectUriCfgError)
+        self.redirect_uris
+            .get(0)
+            .ok_or(AuthError::RedirectUriCfgError)
     }
 }
 

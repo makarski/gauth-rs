@@ -7,8 +7,10 @@ use chrono::Utc;
 use reqwest::blocking::Client as HttpClient;
 use serde_derive::{Deserialize, Serialize};
 
-use super::credentials;
-use super::errors::{Error, Result};
+mod credentials;
+mod errors;
+
+use errors::{AuthError, Result};
 
 const GRANT_TYPE: &str = "authorization_code";
 const DEFAULT_APP_NAME: &str = "gauth_app";
@@ -22,7 +24,7 @@ pub struct Auth {
     app_name: String,
 
     auth_handler: Option<AuthHandler>,
-    oauth_creds: super::credentials::OauthCredentials,
+    oauth_creds: credentials::OauthCredentials,
     consent_uri: String,
 
     token_validate_host: String,
@@ -101,7 +103,7 @@ impl Auth {
                 Some(h) => (h)(self.consent_uri.clone()),
                 None => default_auth_handler(self.consent_uri.clone()),
             }
-            .map_err(|err| Error::UserError(err))?;
+            .map_err(|err| AuthError::UserError(err))?;
 
             self.exchange_auth_code(auth_code)
                 .and_then(|token| self.cache_token(token))
@@ -137,7 +139,7 @@ impl Auth {
         let refresh_token_str = token
             .refresh_token
             .as_ref()
-            .ok_or(Error::RefreshTokenValue)?
+            .ok_or(AuthError::RefreshTokenValue)?
             .as_str();
 
         let mut token = self
@@ -186,7 +188,7 @@ impl Auth {
         } else {
             match dirs::home_dir() {
                 Some(d) => Ok(d.join(format!(".{}", self.app_name))),
-                None => Err(Error::HomeDirError),
+                None => Err(AuthError::HomeDirError),
             }
         }
     }
