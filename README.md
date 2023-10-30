@@ -1,7 +1,7 @@
-rust_google_oauth2
-================
+gauth
+=====
 
-The library supports the following flows:
+The library supports the following Google Auth flows:
 
 * [OAuth2 for installed apps](https://developers.google.com/identity/protocols/oauth2#installed)
 * [Service Accounts](https://developers.google.com/identity/protocols/oauth2/service-account)
@@ -9,7 +9,7 @@ The library supports the following flows:
 
 ```toml
 [dependencies]
-gauth = "0.4.0"
+gauth = "0.5.0"
 ```
 
 #### OAuth2
@@ -21,35 +21,43 @@ gauth = "0.4.0"
    d. `Download JSON` configuration of newly created application  
 
 
-Sample client implementation
+**Client implementation with defaults**
 
 ```rust,no_run
+use gauth::app::Auth;
+
 fn main() {
-    // define consent URL handler
-    // returns an auth. code which is then exchanged against access token
-    let handle_auth = |consent_url: String| -> Result<String, <Box std:error:Error>> {
-        println!("> open the link in browser\n\n{}\n", consent_url);
-        println!("> enter the auth. code\n");
+    let auth_client = Auth::from_file(
+        "my_credentials.json",
+        vec!["https://www.googleapis.com/auth/drive"]
+    ).unwrap();
 
-        let mut auth_code = String::new();
-        io::stdin().read_line(&mut auth_code)?;
+    let token = auth_client.access_token().unwrap();
+    println!("access token: {}", token);
+}
+```
 
-        Ok(auth_code)
+**Custom app name and handler**: access token will be stored in `$HOME/.{app_name}/access_token.json`
+
+To assign a custom directory for caching access tokens, assign a value to env var: `GAUTH_TOKEN_DIR`
+
+```rust,no_run
+use gauth::app::Auth;
+
+fn main() {
+    let auth_handler = |consent_uri: String| -> Result<String, Box<dyn std::error::Error>> {
+        // business logic
+        Ok("auth_code".to_owned())
     }
 
-    let auth_client = gauth::Auth::new(
-        "my-new-application",
-        &[
-            "https://www.googleapis.com/auth/drive.readonly",
-        ],
-        PathBuf::from("/my-google-credentials/oauth-credentials.json"),
-    );
+    let mut auth_client = Auth::from_file(
+        "my_credentials.json",
+        vec!["https://www.googleapis.com/auth/drive"]
+    ).unwrap();
 
-    let token = auth_client
-        .access_token(handle_auth)
-        .expect("failed to retrieve access token");
-
-    println!("obtained token: {:?}", token);
+    let auth_client = auth_client.app_name("new_name").handler(auth_handler);
+    let token = auth_client.access_token().unwrap();
+    println!("access token: {}", token);
 }
 ```
 

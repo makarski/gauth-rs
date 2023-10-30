@@ -35,7 +35,7 @@ impl OauthCredentials {
 
 pub fn auth_code_uri_str(credentials: &OauthCredentials, scope: &str) -> Result<String> {
     let auth_code_link = auth_code_uri(credentials, scope)?;
-    Ok(auth_code_link.into_string())
+    Ok(auth_code_link.to_string())
 }
 
 pub fn read_oauth_config(p: &Path) -> Result<OauthConfig> {

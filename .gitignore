@@ -1,3 +1,5 @@
 /target
 **/*.rs.bk
 Cargo.lock
+tmp
+test_fixtures/oauth2-client.json
