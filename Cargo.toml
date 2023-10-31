@@ -1,12 +1,12 @@
 [package]
 description = "HTTP Client for Google OAuth2"
 name = "gauth"
-version = "0.5.3"
+version = "0.5.4"
 authors = ["Simon Makarski <code@makarski.dev>"]
 edition = "2021"
 license = "MIT OR Apache-2.0"
 readme = "README.md"
-repository = "https://github.com/makarski/rust_google_oauth2"
+repository = "https://github.com/makarski/gauth-rs"
 keywords = ["google-oauth2"]
 categories = ["api-bindings"]
 

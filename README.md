@@ -1,6 +1,8 @@
 gauth
 =====
 
+[![CodeScene Code Health](https://codescene.io/projects/45882/status-badges/code-health)](https://codescene.io/projects/45882)
+
 The library supports the following Google Auth flows:
 
 * [OAuth2 for installed apps](https://developers.google.com/identity/protocols/oauth2#installed)
@@ -9,7 +11,7 @@ The library supports the following Google Auth flows:
 
 ```toml
 [dependencies]
-gauth = "0.5.0"
+gauth = "0.5"
 ```
 
 #### OAuth2
