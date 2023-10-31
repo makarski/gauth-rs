@@ -21,7 +21,7 @@ chrono = "0.4.31"
 base64 = "0.21.3"
 ring = "0.16.20"
 thiserror = "1.0.48"
-tokio = "1.33.0"
 
 [dev-dependencies]
 mockito = "1.2.0"
+tokio = { version = "1.33.0", features = ["test-util"] }
