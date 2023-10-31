@@ -113,30 +113,30 @@ impl ServiceAccount {
     }
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-//     #[test]
-//     async fn test_access_token() {
-//         let scopes = vec!["https://www.googleapis.com/auth/drive"];
-//         let key_path = "test_fixtures/service-account-key.json";
-//         let mut service_account = ServiceAccount::from_file(key_path, scopes);
+    #[tokio::test]
+    async fn test_access_token() {
+        let scopes = vec!["https://www.googleapis.com/auth/drive"];
+        let key_path = "test_fixtures/service-account-key.json";
+        let mut service_account = ServiceAccount::from_file(key_path, scopes);
 
-//         // TODO: fix this test - make sure we can run an integration test
-//         // let access_token = service_account.access_token();
-//         // assert!(access_token.is_ok());
-//         // assert!(!access_token.unwrap().is_empty());
+        // TODO: fix this test - make sure we can run an integration test
+        // let access_token = service_account.access_token();
+        // assert!(access_token.is_ok());
+        // assert!(!access_token.unwrap().is_empty());
 
-//         service_account.access_token = Some("test_access_token".to_string());
+        service_account.access_token = Some("test_access_token".to_string());
 
-//         let expires_at = Utc::now().timestamp() as u64 + 3600;
-//         service_account.expires_at = Some(expires_at);
+        let expires_at = Utc::now().timestamp() as u64 + 3600;
+        service_account.expires_at = Some(expires_at);
 
-//         assert_eq!(
-//             service_account.access_token().await.unwrap(),
-//             "test_access_token"
-//         );
-//         assert_eq!(service_account.expires_at.unwrap(), expires_at);
-//     }
-// }
+        assert_eq!(
+            service_account.access_token().await.unwrap(),
+            "test_access_token"
+        );
+        assert_eq!(service_account.expires_at.unwrap(), expires_at);
+    }
+}

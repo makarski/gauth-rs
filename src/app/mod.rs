@@ -243,53 +243,53 @@ fn default_auth_handler(consent_uri: String) -> StdResult<String, Box<dyn StdErr
     Ok(auth_code)
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
-//     use std::env;
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::env;
 
-//     #[test]
-//     fn test_access_token_success() {
-//         let mut google = mockito::Server::new();
-//         let google_host = google.url();
+    #[tokio::test]
+    async fn test_access_token_success() {
+        let mut google = mockito::Server::new();
+        let google_host = google.url();
 
-//         google
-//             .mock("POST", "/token")
-//             .with_status(200)
-//             .with_body(r#"{"access_token":"access_token","expires_in":3599,"refresh_token":"refresh_token","scope":"https://www.googleapis.com/auth/drive","token_type":"Bearer"}"#)
-//             .create();
+        google
+            .mock("POST", "/token")
+            .with_status(200)
+            .with_body(r#"{"access_token":"access_token","expires_in":3599,"refresh_token":"refresh_token","scope":"https://www.googleapis.com/auth/drive","token_type":"Bearer"}"#)
+            .create();
 
-//         let consent_uri = format!("{}/o/oauth2/auth?client_id=client_id&response_type=code&redirect_uri=urn%3Aietf%3Awg%3Aoauth%3A2.0%3Aoob&include_granted_scopes=true&scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fdrive&access_type=offline&state=pass-through+value", google_host);
+        let consent_uri = format!("{}/o/oauth2/auth?client_id=client_id&response_type=code&redirect_uri=urn%3Aietf%3Awg%3Aoauth%3A2.0%3Aoob&include_granted_scopes=true&scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fdrive&access_type=offline&state=pass-through+value", google_host);
 
-//         let expected_consent_uri = consent_uri.clone();
-//         let auth_handler = move |auth_consent_uri: String| -> StdResult<String, Box<dyn StdError>> {
-//             assert_eq!(auth_consent_uri, expected_consent_uri);
-//             Ok("auth_code".to_owned())
-//         };
+        let expected_consent_uri = consent_uri.clone();
+        let auth_handler = move |auth_consent_uri: String| -> StdResult<String, Box<dyn StdError>> {
+            assert_eq!(auth_consent_uri, expected_consent_uri);
+            Ok("auth_code".to_owned())
+        };
 
-//         env::set_var(TOKEN_DIR, "./tmp/gauth_app");
+        env::set_var(TOKEN_DIR, "./tmp/gauth_app");
 
-//         let auth = Auth {
-//             app_name: "gauth_app".to_owned(),
-//             auth_handler: None,
-//             consent_uri,
-//             oauth_creds: credentials::OauthCredentials {
-//                 client_id: "client_id".to_owned(),
-//                 project_id: "project_id".to_owned(),
-//                 auth_uri: format!("{}/o/oauth2/auth", google_host),
-//                 token_uri: format!("{}/token", google_host),
-//                 auth_provider_x509_cert_url: "auth_provider_x509_cert_url".to_owned(),
-//                 client_secret: "client_secret".to_owned(),
-//                 redirect_uris: vec!["urn:ietf:wg:oauth:2.0:oob".to_owned()],
-//             },
-//             token_validate_host: google_host.to_owned(),
-//             http_client: HttpClient::new(),
-//         };
+        let auth = Auth {
+            app_name: "gauth_app".to_owned(),
+            auth_handler: None,
+            consent_uri,
+            oauth_creds: credentials::OauthCredentials {
+                client_id: "client_id".to_owned(),
+                project_id: "project_id".to_owned(),
+                auth_uri: format!("{}/o/oauth2/auth", google_host),
+                token_uri: format!("{}/token", google_host),
+                auth_provider_x509_cert_url: "auth_provider_x509_cert_url".to_owned(),
+                client_secret: "client_secret".to_owned(),
+                redirect_uris: vec!["urn:ietf:wg:oauth:2.0:oob".to_owned()],
+            },
+            token_validate_host: google_host.to_owned(),
+            http_client: HttpClient::new(),
+        };
 
-//         let auth = auth.handler(auth_handler);
+        let auth = auth.handler(auth_handler);
 
-//         let token = auth.access_token().unwrap();
-//         assert_eq!(token, "Bearer access_token");
-//         env::remove_var(TOKEN_DIR);
-//     }
-// }
+        let token = auth.access_token().await.unwrap();
+        assert_eq!(token, "Bearer access_token");
+        env::remove_var(TOKEN_DIR);
+    }
+}
