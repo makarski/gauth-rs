@@ -1,6 +1,8 @@
 use chrono::Utc;
 use errors::Result;
-use reqwest::blocking::Client as HttpClient;
+use reqwest::Client as HttpClient;
+
+use self::errors::ServiceAccountError;
 
 mod errors;
 mod jwt;
@@ -54,7 +56,7 @@ impl ServiceAccount {
     /// Returns an access token
     /// If the access token is not expired, it will return the cached access token
     /// Otherwise, it will exchange the JWT token for an access token
-    pub fn access_token(&mut self) -> Result<String> {
+    pub async fn access_token(&mut self) -> Result<String> {
         match (self.access_token.as_ref(), self.expires_at) {
             (Some(access_token), Some(expires_at))
                 if expires_at > Utc::now().timestamp() as u64 =>
@@ -63,7 +65,10 @@ impl ServiceAccount {
             }
             _ => {
                 let jwt_token = self.jwt_token()?;
-                let token = self.exchange_jwt_token_for_access_token(jwt_token)?;
+                let token = match self.exchange_jwt_token_for_access_token(jwt_token).await {
+                    Ok(token) => token,
+                    Err(err) => return Err(err),
+                };
 
                 let expires_at = Utc::now().timestamp() as u64 + token.expires_in - 30;
 
@@ -75,17 +80,25 @@ impl ServiceAccount {
         }
     }
 
-    fn exchange_jwt_token_for_access_token(&mut self, jwt_token: jwt::JwtToken) -> Result<Token> {
-        let resp = self
-            .http_client
-            .post(jwt_token.token_uri())
-            .form(&[
-                ("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer"),
-                ("assertion", &jwt_token.to_string()?),
-            ])
-            .send()?;
+    async fn exchange_jwt_token_for_access_token(
+        &mut self,
+        jwt_token: jwt::JwtToken,
+    ) -> Result<Token> {
+        let req_builder = self.http_client.post(jwt_token.token_uri()).form(&[
+            ("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer"),
+            ("assertion", &jwt_token.to_string()?),
+        ]);
 
-        let token = resp.json::<Token>()?;
+        let res = match req_builder.send().await {
+            Ok(resp) => resp,
+            Err(err) => return Err(ServiceAccountError::HttpReqwest(err)),
+        };
+
+        let token = match res.json::<Token>().await {
+            Ok(token) => token,
+            Err(err) => return Err(ServiceAccountError::HttpReqwest(err)),
+        };
+
         Ok(token)
     }
 
@@ -104,8 +117,8 @@ impl ServiceAccount {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_access_token() {
+    #[tokio::test]
+    async fn test_access_token() {
         let scopes = vec!["https://www.googleapis.com/auth/drive"];
         let key_path = "test_fixtures/service-account-key.json";
         let mut service_account = ServiceAccount::from_file(key_path, scopes);
@@ -120,7 +133,10 @@ mod tests {
         let expires_at = Utc::now().timestamp() as u64 + 3600;
         service_account.expires_at = Some(expires_at);
 
-        assert_eq!(service_account.access_token().unwrap(), "test_access_token");
+        assert_eq!(
+            service_account.access_token().await.unwrap(),
+            "test_access_token"
+        );
         assert_eq!(service_account.expires_at.unwrap(), expires_at);
     }
 }

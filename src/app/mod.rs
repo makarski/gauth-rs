@@ -4,7 +4,7 @@ use std::result::Result as StdResult;
 use std::{env, path};
 
 use chrono::Utc;
-use reqwest::blocking::Client as HttpClient;
+use reqwest::Client as HttpClient;
 use serde_derive::{Deserialize, Serialize};
 
 mod credentials;
@@ -94,32 +94,39 @@ impl Auth {
         self
     }
 
+    async fn generate_new_token(&self) -> Result<Token> {
+        let auth_code = match self.auth_handler.as_ref() {
+            Some(h) => (h)(self.consent_uri.clone()),
+            None => default_auth_handler(self.consent_uri.clone()),
+        }
+        .map_err(|err| AuthError::UserError(err))?;
+
+        self.exchange_auth_code(auth_code)
+            .await
+            .and_then(|token| self.cache_token(token))
+    }
+
     /// Returns an access token
     /// If the access token is not expired, it will return the cached access token
     /// Otherwise, it will exchange the auth code for an access token
-    pub fn access_token(&self) -> Result<String> {
-        let token = self.cached_token().or_else(|_| {
-            let auth_code = match self.auth_handler.as_ref() {
-                Some(h) => (h)(self.consent_uri.clone()),
-                None => default_auth_handler(self.consent_uri.clone()),
-            }
-            .map_err(|err| AuthError::UserError(err))?;
+    pub async fn access_token(&self) -> Result<String> {
+        let token = match self.cached_token() {
+            Ok(token) => token,
+            Err(_) => self.generate_new_token().await?,
+        };
 
-            self.exchange_auth_code(auth_code)
-                .and_then(|token| self.cache_token(token))
-        })?;
-
-        if self.is_token_valid(&token) {
+        if self.is_token_valid(&token).await {
             return Ok(token.bearer_token());
         }
 
         self.refresh_token(token)
+            .await
             .and_then(|token| self.cache_token(token))
             .map(|token| token.bearer_token())
     }
 
-    fn exchange_auth_code(&self, auth_code: String) -> Result<Token> {
-        let token = self
+    async fn exchange_auth_code(&self, auth_code: String) -> Result<Token> {
+        let req_builder = self
             .http_client
             .post(self.oauth_creds.token_uri.as_str())
             .form(&[
@@ -128,21 +135,29 @@ impl Auth {
                 ("client_secret", self.oauth_creds.client_secret.as_str()),
                 ("redirect_uri", self.oauth_creds.redirect_uri()?.as_str()),
                 ("grant_type", GRANT_TYPE),
-            ])
-            .send()?
-            .json::<Token>()?;
+            ]);
+
+        let res = match req_builder.send().await {
+            Ok(resp) => resp,
+            Err(err) => return Err(AuthError::ReqwestError(err)),
+        };
+
+        let token = match res.json::<Token>().await {
+            Ok(token) => token,
+            Err(err) => return Err(AuthError::ReqwestError(err)),
+        };
 
         Ok(token)
     }
 
-    fn refresh_token(&self, token: Token) -> Result<Token> {
+    async fn refresh_token(&self, token: Token) -> Result<Token> {
         let refresh_token_str = token
             .refresh_token
             .as_ref()
             .ok_or(AuthError::RefreshTokenValue)?
             .as_str();
 
-        let mut token = self
+        let req_builder = self
             .http_client
             .post(self.oauth_creds.token_uri.as_str())
             .form(&[
@@ -150,9 +165,17 @@ impl Auth {
                 ("client_id", self.oauth_creds.client_id.as_str()),
                 ("client_secret", self.oauth_creds.client_secret.as_str()),
                 ("grant_type", "refresh_token"),
-            ])
-            .send()?
-            .json::<Token>()?;
+            ]);
+
+        let res = match req_builder.send().await {
+            Ok(resp) => resp,
+            Err(err) => return Err(AuthError::ReqwestError(err)),
+        };
+
+        let mut token = match res.json::<Token>().await {
+            Ok(token) => token,
+            Err(err) => return Err(AuthError::ReqwestError(err)),
+        };
 
         // refresh token is not returned on refresh
         token.refresh_token = Some(refresh_token_str.to_owned());
@@ -193,7 +216,7 @@ impl Auth {
         }
     }
 
-    fn is_token_valid(&self, token: &Token) -> bool {
+    async fn is_token_valid(&self, token: &Token) -> bool {
         if token.is_expired() {
             return false;
         }
@@ -203,7 +226,7 @@ impl Auth {
             self.token_validate_host, token.access_token
         );
 
-        match self.http_client.get(url.as_str()).send() {
+        match self.http_client.get(url.as_str()).send().await {
             Ok(resp) => resp.status().is_success(),
             Err(_) => false,
         }
@@ -225,8 +248,8 @@ mod tests {
     use super::*;
     use std::env;
 
-    #[test]
-    fn test_access_token_success() {
+    #[tokio::test]
+    async fn test_access_token_success() {
         let mut google = mockito::Server::new();
         let google_host = google.url();
 
@@ -265,7 +288,7 @@ mod tests {
 
         let auth = auth.handler(auth_handler);
 
-        let token = auth.access_token().unwrap();
+        let token = auth.access_token().await.unwrap();
         assert_eq!(token, "Bearer access_token");
         env::remove_var(TOKEN_DIR);
     }
