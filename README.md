@@ -28,13 +28,15 @@ gauth = "0.5"
 ```rust,no_run
 use gauth::app::Auth;
 
-fn main() {
+#[tokio::main]
+async fn access_token() {
     let auth_client = Auth::from_file(
         "my_credentials.json",
-        vec!["https://www.googleapis.com/auth/drive"]
-    ).unwrap();
+        vec!["https://www.googleapis.com/auth/drive"],
+    )
+    .unwrap();
 
-    let token = auth_client.access_token().unwrap();
+    let token = auth_client.access_token().await.unwrap();
     println!("access token: {}", token);
 }
 ```
@@ -46,19 +48,21 @@ To assign a custom directory as access token caching, set env var value: `GAUTH_
 ```rust,no_run
 use gauth::app::Auth;
 
-fn main() {
+#[tokio::main]
+async fn access_token() {
     let auth_handler = |consent_uri: String| -> Result<String, Box<dyn std::error::Error>> {
         // business logic
         Ok("auth_code".to_owned())
-    }
+    };
 
     let mut auth_client = Auth::from_file(
         "my_credentials.json",
-        vec!["https://www.googleapis.com/auth/drive"]
-    ).unwrap();
+        vec!["https://www.googleapis.com/auth/drive"],
+    )
+    .unwrap();
 
     let auth_client = auth_client.app_name("new_name").handler(auth_handler);
-    let token = auth_client.access_token().unwrap();
+    let token = auth_client.access_token().await.unwrap();
     println!("access token: {}", token);
 }
 ```
@@ -71,12 +75,13 @@ it can be used to obtain an access token.
 ```rust,no_run
 use gauth::serv_account::ServiceAccount;
 
-fn access_token() {
+#[tokio::main]
+async fn access_token() {
     let scopes = vec!["https://www.googleapis.com/auth/drive"];
     let key_path = "test_fixtures/service-account-key.json";
 
     let mut service_account = ServiceAccount::from_file(key_path, scopes);
-    let access_token = service_account.access_token().unwrap();
+    let access_token = service_account.access_token().await.unwrap();
 
     println!("access token {}:", access_token);
 }
