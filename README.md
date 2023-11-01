@@ -11,7 +11,7 @@ The library supports the following Google Auth flows:
 
 ```toml
 [dependencies]
-gauth = "0.5"
+gauth = "0.6"
 ```
 
 #### OAuth2
