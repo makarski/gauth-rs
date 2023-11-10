@@ -11,7 +11,7 @@ The library supports the following Google Auth flows:
 
 ```toml
 [dependencies]
-gauth = "0.6"
+gauth = "0.7"
 ```
 
 #### OAuth2
@@ -29,7 +29,7 @@ gauth = "0.6"
 use gauth::app::Auth;
 
 #[tokio::main]
-async fn access_token() {
+async fn main() {
     let auth_client = Auth::from_file(
         "my_credentials.json",
         vec!["https://www.googleapis.com/auth/drive"],
@@ -41,16 +41,44 @@ async fn access_token() {
 }
 ```
 
+It is also possible to make a **blocking call** to retrieve an access token. This may be helpful if we want to wrap the logic into a closure.
+
+```
+[dependencies]
+gauth = { version = "0.7", features = ["app-blocking"] }
+```
+
+```rust,no_run
+use gauth::app::Auth;
+
+#[tokio::main]
+async fn main() {
+    let ga = Auth::from_file(
+        "client_secret.json",
+        vec!["https://www.googleapis.com/auth/drive"]
+    ).unwrap();
+
+    let closure = move || {
+        // add some logic here
+        ga.access_token_blocking()
+    };
+
+    let token = closure().unwrap();
+    println!("token from closure: {}", token);
+}
+```
+
 **Custom app name and handler**: access token will be stored in `$HOME/.{app_name}/access_token.json`
 
 To assign a custom directory as access token caching, set env var value: `GAUTH_TOKEN_DIR`
 
 ```rust,no_run
 use gauth::app::Auth;
+use anyhow::Error as AnyError;
 
 #[tokio::main]
-async fn access_token() {
-    let auth_handler = |consent_uri: String| -> Result<String, Box<dyn std::error::Error>> {
+async fn main() {
+    let auth_handler = |consent_uri: String| -> Result<String, AnyError> {
         // business logic
         Ok("auth_code".to_owned())
     };

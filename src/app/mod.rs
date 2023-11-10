@@ -1,8 +1,8 @@
-use std::error::Error as StdError;
 use std::path::PathBuf;
 use std::result::Result as StdResult;
 use std::{env, path};
 
+use anyhow::Error as AnyError;
 use chrono::Utc;
 use reqwest::Client as HttpClient;
 use serde_derive::{Deserialize, Serialize};
@@ -17,7 +17,16 @@ const DEFAULT_APP_NAME: &str = "gauth_app";
 const TOKEN_DIR: &str = "GAUTH_TOKEN_DIR";
 const GOOGLE_VALIDATE_HOST: &str = "https://www.googleapis.com";
 
-type AuthHandler = Box<dyn Fn(String) -> StdResult<String, Box<dyn StdError>>>;
+/// AuthHandler is a type that describes a function that takes a consent uri and returns an auth code
+type AuthHandler = Box<dyn AuthHandlerFn>;
+
+/// AuthHandlerFn is a function that takes a consent uri and returns an auth code
+pub trait AuthHandlerFn: Fn(String) -> StdResult<String, AnyError> + 'static + Send + Sync {}
+
+impl<H> AuthHandlerFn for H where
+    H: Fn(String) -> StdResult<String, AnyError> + 'static + Send + Sync
+{
+}
 
 /// Auth struct represents an auth instance
 pub struct Auth {
@@ -86,10 +95,7 @@ impl Auth {
     }
 
     /// Handler can be used to override the default auth handler
-    pub fn handler<F>(mut self, handler: F) -> Self
-    where
-        F: Fn(String) -> StdResult<String, Box<dyn StdError>> + 'static,
-    {
+    pub fn handler<H: AuthHandlerFn>(mut self, handler: H) -> Self {
         self.auth_handler = Some(Box::new(handler));
         self
     }
@@ -98,17 +104,16 @@ impl Auth {
         let auth_code = match self.auth_handler.as_ref() {
             Some(h) => (h)(self.consent_uri.clone()),
             None => default_auth_handler(self.consent_uri.clone()),
-        }
-        .map_err(|err| AuthError::UserError(err))?;
+        }?;
 
         self.exchange_auth_code(auth_code)
             .await
             .and_then(|token| self.cache_token(token))
     }
 
-    /// Returns an access token
-    /// If the access token is not expired, it will return the cached access token
-    /// Otherwise, it will exchange the auth code for an access token
+    /// Returns an access token.
+    /// If the access token is not expired, it will return the cached access token.
+    /// Otherwise, it will exchange the auth code for an access token.
     pub async fn access_token(&self) -> Result<String> {
         let token = match self.cached_token() {
             Ok(token) => token,
@@ -123,6 +128,11 @@ impl Auth {
             .await
             .and_then(|token| self.cache_token(token))
             .map(|token| token.bearer_token())
+    }
+
+    #[cfg(feature = "app-blocking")]
+    pub fn access_token_blocking(&self) -> Result<String> {
+        futures::executor::block_on(self.access_token())
     }
 
     async fn exchange_auth_code(&self, auth_code: String) -> Result<Token> {
@@ -233,7 +243,7 @@ impl Auth {
     }
 }
 
-fn default_auth_handler(consent_uri: String) -> StdResult<String, Box<dyn StdError>> {
+fn default_auth_handler(consent_uri: String) -> StdResult<String, AnyError> {
     println!("> open the link in browser\n\n{}\n", consent_uri);
     println!("> enter the auth. code\n");
 
@@ -262,7 +272,7 @@ mod tests {
         let consent_uri = format!("{}/o/oauth2/auth?client_id=client_id&response_type=code&redirect_uri=urn%3Aietf%3Awg%3Aoauth%3A2.0%3Aoob&include_granted_scopes=true&scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fdrive&access_type=offline&state=pass-through+value", google_host);
 
         let expected_consent_uri = consent_uri.clone();
-        let auth_handler = move |auth_consent_uri: String| -> StdResult<String, Box<dyn StdError>> {
+        let auth_handler = move |auth_consent_uri: String| -> StdResult<String, AnyError> {
             assert_eq!(auth_consent_uri, expected_consent_uri);
             Ok("auth_code".to_owned())
         };

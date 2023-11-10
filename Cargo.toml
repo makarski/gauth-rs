@@ -1,14 +1,14 @@
 [package]
 description = "HTTP Client for Google OAuth2"
 name = "gauth"
-version = "0.6.0"
+version = "0.7.0"
 authors = ["Simon Makarski <code@makarski.dev>"]
 edition = "2021"
 license = "MIT OR Apache-2.0"
 readme = "README.md"
 repository = "https://github.com/makarski/gauth-rs"
-keywords = ["google-oauth2"]
-categories = ["api-bindings"]
+keywords = ["google-oauth2", "google", "auth", "gcp"]
+categories = ["api-bindings", "authentication"]
 
 [dependencies]
 url = "^2.4.1"
@@ -21,7 +21,12 @@ chrono = "0.4.31"
 base64 = "0.21.3"
 ring = "0.16.20"
 thiserror = "1.0.48"
+anyhow = "1.0.40"
+futures = { version = "0.3", features = ["executor"], optional = true }
 
 [dev-dependencies]
 mockito = "1.2.0"
 tokio = { version = "1.33.0", features = ["test-util"] }
+
+[features]
+app-blocking = ["dep:futures"]

@@ -1,5 +1,5 @@
 use serde_json::error as serde_err;
-use std::{error, io, result};
+use std::{io, result};
 use thiserror::Error;
 
 pub type Result<T> = result::Result<T, AuthError>;
@@ -25,7 +25,7 @@ pub enum AuthError {
     RedirectUriCfgError,
 
     #[error("AuthHandler error:{0}")]
-    UserError(Box<dyn error::Error>),
+    UserError(#[from] anyhow::Error),
 
     #[error("expected a refresh token string value, got None")]
     RefreshTokenValue,
