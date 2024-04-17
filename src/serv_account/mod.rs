@@ -4,7 +4,7 @@ use reqwest::Client as HttpClient;
 
 use self::errors::ServiceAccountError;
 
-mod errors;
+pub(crate) mod errors;
 mod jwt;
 
 #[derive(Debug, Clone)]

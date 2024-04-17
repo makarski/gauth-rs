@@ -115,6 +115,28 @@ async fn access_token() {
 }
 ```
 
+### Bridging sync and async code
+
+The default implementation for acquiring the access token is `async` in this library.
+However, there are cases, when one need to use a sync call. For example, `async` signature is inconvenient when using together with [`tonic middlewares`](https://docs.rs/tonic/latest/tonic/service/trait.Interceptor.html). The challenges with bridging sync and async code are described in this [issue](https://github.com/hyperium/tonic/issues/870).
+
+In order to address the issue, we decided to opt for an experimental approach and implemented a `token_provider` package. We introduced a `Watcher` trait with implementations for `app` and `serv_account` packages. The trait implementation spawns a deamon that polls and caches token updates at a defined time interval. Thus the token is regularly updated by an async process. Token retrieval, as simple as reading from internal cache, was easy to implement with `sync` func signature.
+
+```rust,no_run
+let service_account = ServiceAccount::from_file(&keypath, vec!["https://www.googleapis.com/auth/pubsub"]);
+
+let tp = AsyncTokenProvider::new(service_account).with_interval(5);
+
+// the token is updated every 5 seconds
+// and cached in AsyncTokenProvider
+tp.watch_updates().await;
+
+// sync call to get the access token
+let access_token = tp.access_token()?;
+```
+
+The full example can be found [here](./examples/async_token_provider.rs)
+
 ## License
 
 License under either or:

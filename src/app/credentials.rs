@@ -30,7 +30,7 @@ pub struct OauthCredentials {
 impl OauthCredentials {
     pub fn redirect_uri(&self) -> Result<&String> {
         self.redirect_uris
-            .get(0)
+            .first()
             .ok_or(AuthError::RedirectUriCfgError)
     }
 }
