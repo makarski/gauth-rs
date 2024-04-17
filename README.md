@@ -11,7 +11,7 @@ The library supports the following Google Auth flows:
 
 ```toml
 [dependencies]
-gauth = "0.7"
+gauth = "0.8"
 ```
 
 #### OAuth2
@@ -45,7 +45,7 @@ It is also possible to make a **blocking call** to retrieve an access token. Thi
 
 ```
 [dependencies]
-gauth = { version = "0.7", features = ["app-blocking"] }
+gauth = { version = "0.8", features = ["app-blocking"] }
 ```
 
 ```rust,no_run
@@ -117,10 +117,14 @@ async fn access_token() {
 
 ### Bridging sync and async code
 
-The default implementation for acquiring the access token is `async` in this library.
-However, there are cases, when one need to use a sync call. For example, `async` signature is inconvenient when using together with [`tonic middlewares`](https://docs.rs/tonic/latest/tonic/service/trait.Interceptor.html). The challenges with bridging sync and async code are described in this [issue](https://github.com/hyperium/tonic/issues/870).
+The default implementation for acquiring the access token in this library is asynchronous. However, there are scenarios where a synchronous call is necessary. For instance, asynchronous signatures can be cumbersome when used with [tonic middlewares](https://docs.rs/tonic/latest/tonic/service/trait.Interceptor.html). The difficulties of integrating synchronous and asynchronous code are outlined in this [GitHub issue](https://github.com/hyperium/tonic/issues/870).
 
-In order to address the issue, we decided to opt for an experimental approach and implemented a `token_provider` package. We introduced a `Watcher` trait with implementations for `app` and `serv_account` packages. The trait implementation spawns a deamon that polls and caches token updates at a defined time interval. Thus the token is regularly updated by an async process. Token retrieval, as simple as reading from internal cache, was easy to implement with `sync` func signature.
+To resolve this, we adopted an experimental approach by developing a `token_provider` package. This package includes a `Watcher` trait, which has been implemented for both the `app` and `serv_account` packages. Each implementation of this trait spawns a daemon that periodically polls for and caches token updates at specified intervals. As a result, tokens are consistently refreshed through an asynchronous process. The retrieval of tokens is simplified to a synchronous function that reads from the internal cache.
+
+```
+[dependencies]
+gauth = { version = "0.8", features = ["token-watcher"] }
+```
 
 ```rust,no_run
 let service_account = ServiceAccount::from_file(&keypath, vec!["https://www.googleapis.com/auth/pubsub"]);
