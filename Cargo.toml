@@ -34,4 +34,4 @@ env_logger = "0.10.0"
 
 [features]
 app-blocking = ["dep:futures"]
-token-watcher = ["dep:tokio", "dep:async-trait", "dep:log"]
+token-watcher = ["dep:async-trait", "dep:log"]
