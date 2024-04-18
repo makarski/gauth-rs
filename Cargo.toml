@@ -24,7 +24,7 @@ ring = "0.16.20"
 thiserror = "1.0.48"
 anyhow = "1.0.40"
 futures = { version = "0.3", features = ["executor"], optional = true }
-tokio = { version = "1.33.0", optional = true }
+tokio = { version = "1.33.0", features = ["test-util", "sync"] }
 log = { version = "0.4", optional = true }
 
 [dev-dependencies]
