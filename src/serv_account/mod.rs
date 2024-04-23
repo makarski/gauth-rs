@@ -101,7 +101,7 @@ impl ServiceAccount {
             .map_err(ServiceAccountError::HttpJson)?;
 
         if json.token_type != "Bearer" {
-            return Err(ServiceAccountError::AccessTokenNotBeaarer(json.token_type));
+            return Err(ServiceAccountError::AccessTokenNotBearer(json.token_type));
         }
 
         // Account for clock skew or time to receive or process the response

@@ -30,7 +30,7 @@ pub enum ServiceAccountError {
     HttpJson(reqwest::Error),
 
     #[error("response returned non-Bearer auth access token: {0}")]
-    AccessTokenNotBeaarer(String),
+    AccessTokenNotBearer(String),
 }
 
 pub type Result<T> = StdResult<T, ServiceAccountError>;
