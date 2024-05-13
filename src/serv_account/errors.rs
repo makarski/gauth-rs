@@ -1,23 +1,44 @@
 use reqwest::StatusCode;
 use ring::error::{KeyRejected, Unspecified};
-use std::{io, path::PathBuf, result::Result as StdResult};
+use std::{io, path::PathBuf};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
-pub enum ServiceAccountError {
+pub enum ServiceAccountFromFileError {
     #[error("failed to read key file: {0}: {1}")]
-    ReadKey(PathBuf, io::Error),
+    ReadFile(PathBuf, io::Error),
 
     #[error("failed to de/serialize to json")]
-    SerdeJson(#[from] serde_json::Error),
+    DeserializeFile(#[from] serde_json::Error),
 
-    #[error("failed to decode base64")]
-    Base64Decode(#[from] base64::DecodeError),
+    #[error("Failed to initialize service account: {0}")]
+    ServiceAccountInitialization(ServiceAccountBuildError),
 
-    #[error("failed to create rsa key pair: {0}")]
-    RsaKeyPair(KeyRejected),
+    #[error("Failed to get access token: {0}")]
+    GetAccessToken(GetAccessTokenError),
+}
 
-    #[error("failed to rsa sign: {0}")]
+#[derive(Debug, Error)]
+pub enum ServiceAccountBuildError {
+    #[error("RSA private key didn't start with PEM prefix: -----BEGIN PRIVATE KEY-----")]
+    RsaPrivateKeyNoPrefix,
+
+    #[error("RSA private key didn't end with PEM suffix: -----END PRIVATE KEY-----")]
+    RsaPrivateKeyNoSuffix,
+
+    #[error("RSA private key could not be decoded as base64: {0}")]
+    RsaPrivateKeyDecode(base64::DecodeError),
+
+    #[error("RSA private key could not be parsed: {0}")]
+    RsaPrivateKeyParse(KeyRejected),
+}
+
+#[derive(Debug, Error)]
+pub enum GetAccessTokenError {
+    #[error("failed to serialize JSON: {0}")]
+    JsonSerialization(serde_json::Error),
+
+    #[error("failed to RSA sign: {0}")]
     RsaSign(Unspecified),
 
     #[error("failed to send request")]
@@ -31,6 +52,6 @@ pub enum ServiceAccountError {
 
     #[error("response returned non-Bearer auth access token: {0}")]
     AccessTokenNotBearer(String),
-}
 
-pub type Result<T> = StdResult<T, ServiceAccountError>;
+    // TODO error variant for invalid authentication
+}

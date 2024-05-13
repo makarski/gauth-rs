@@ -12,8 +12,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .nth(1)
         .expect("Provide a path to the service account key file");
 
-    let service_account =
-        ServiceAccount::from_file(&keypath, vec!["https://www.googleapis.com/auth/pubsub"]);
+    let service_account = ServiceAccount::from_file(&keypath)
+        .unwrap()
+        .scopes(vec!["https://www.googleapis.com/auth/pubsub"])
+        .build()
+        .unwrap();
 
     let tp = AsyncTokenProvider::new(service_account).with_interval(5);
 

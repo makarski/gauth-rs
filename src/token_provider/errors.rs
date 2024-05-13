@@ -3,7 +3,7 @@ use thiserror::Error;
 use tokio::sync::mpsc::error::SendError;
 use tokio::sync::TryLockError;
 
-use crate::serv_account::errors::ServiceAccountError;
+use crate::serv_account::errors::GetAccessTokenError;
 
 #[derive(Debug, Error)]
 pub enum TokenProviderError {
@@ -11,7 +11,7 @@ pub enum TokenProviderError {
     AccessToken(#[from] TryLockError),
 
     #[error("service account error: {0}")]
-    ServiceAccountError(#[from] ServiceAccountError),
+    GetAccessTokenError(#[from] GetAccessTokenError),
 
     #[error("failed to send token: {0}")]
     SendError(#[from] SendError<String>),

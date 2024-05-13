@@ -260,7 +260,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_access_token_success() {
-        let mut google = mockito::Server::new();
+        let mut google = mockito::Server::new_async().await;
         let google_host = google.url();
 
         google
