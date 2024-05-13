@@ -1,7 +1,7 @@
 [package]
 description = "HTTP Client for Google OAuth2"
 name = "gauth"
-version = "0.8.0"
+version = "0.9.0"
 authors = ["Simon Makarski <code@makarski.dev>"]
 edition = "2021"
 license = "MIT OR Apache-2.0"
@@ -17,21 +17,21 @@ serde = "1"
 serde_json = "1"
 serde_derive = "1"
 dirs = "5.0.1"
-reqwest = { version = "0.11", features = ["json"] }
+reqwest = { version = "0.12.4", features = ["json"] }
 chrono = "0.4.31"
 base64 = "0.21.3"
 ring = "0.16.20"
 thiserror = "1.0.48"
 anyhow = "1.0.40"
 futures = { version = "0.3", features = ["executor"], optional = true }
-tokio = { version = "1.33.0", optional = true }
+tokio = { version = "1.33.0", features = ["test-util", "sync"] }
 log = { version = "0.4", optional = true }
 
 [dev-dependencies]
 mockito = "1.2.0"
-tokio = { version = "1.33.0", features = ["test-util"] }
+tokio = { version = "1.33.0", features = ["test-util", "rt", "macros", "rt-multi-thread"] }
 env_logger = "0.10.0"
 
 [features]
 app-blocking = ["dep:futures"]
-token-watcher = ["dep:tokio", "dep:async-trait", "dep:log"]
+token-watcher = ["dep:async-trait", "dep:log"]

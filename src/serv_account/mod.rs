@@ -1,115 +1,166 @@
-use chrono::Utc;
-use errors::Result;
+use self::{
+    errors::{
+        GetAccessTokenError, ServiceAccountBuildError as ServiceAccountBuilderError,
+        ServiceAccountFromFileError,
+    },
+    jwt::JwtTokenSigner,
+};
+use chrono::{DateTime, Duration, Utc};
 use reqwest::Client as HttpClient;
+use serde_derive::Deserialize;
+use std::{path::Path, sync::Arc};
+use tokio::sync::RwLock;
 
-use self::errors::ServiceAccountError;
+pub use self::jwt::ServiceAccountKey;
 
-pub(crate) mod errors;
+pub mod errors;
 mod jwt;
 
 #[derive(Debug, Clone)]
 pub struct ServiceAccount {
-    scopes: String,
-    key_path: String,
-    user_email: Option<String>,
-
-    access_token: Option<String>,
-    expires_at: Option<u64>,
-
     http_client: HttpClient,
+    jwt_token: JwtTokenSigner,
+    access_token: Arc<RwLock<Option<AccessToken>>>,
 }
 
-#[derive(Debug, serde_derive::Deserialize)]
-struct Token {
-    access_token: String,
-    expires_in: u64,
-    token_type: String,
-}
-
-impl Token {
-    fn bearer_token(&self) -> String {
-        format!("{} {}", self.token_type, self.access_token)
-    }
+#[derive(Debug, Clone)]
+pub struct AccessToken {
+    pub bearer_token: String,
+    pub expires_at: DateTime<Utc>,
 }
 
 impl ServiceAccount {
-    /// Creates a new service account from a key file and scopes
-    pub fn from_file(key_path: &str, scopes: Vec<&str>) -> Self {
-        Self {
-            scopes: scopes.join(" "),
-            key_path: key_path.to_string(),
-            user_email: None,
-
-            access_token: None,
-            expires_at: None,
-
-            http_client: HttpClient::new(),
-        }
+    pub fn builder() -> ServiceAccountBuilder {
+        ServiceAccountBuilder::new()
     }
 
-    /// Sets the user email
-    pub fn user_email(mut self, user_email: &str) -> Self {
-        self.user_email = Some(user_email.to_string());
-        self
+    /// Creates a new `ServiceAccountBuilder` from a key file
+    pub fn from_file<P: AsRef<Path>>(
+        key_path: P,
+    ) -> Result<ServiceAccountBuilder, ServiceAccountFromFileError> {
+        let bytes = std::fs::read(&key_path).map_err(|e| {
+            ServiceAccountFromFileError::ReadFile(key_path.as_ref().to_path_buf(), e)
+        })?;
+        let key = serde_json::from_slice::<ServiceAccountKey>(&bytes)
+            .map_err(ServiceAccountFromFileError::DeserializeFile)?;
+        Ok(Self::builder().key(key))
     }
 
     /// Returns an access token
     /// If the access token is not expired, it will return the cached access token
     /// Otherwise, it will exchange the JWT token for an access token
-    pub async fn access_token(&mut self) -> Result<String> {
-        match (self.access_token.as_ref(), self.expires_at) {
-            (Some(access_token), Some(expires_at))
-                if expires_at > Utc::now().timestamp() as u64 =>
-            {
-                Ok(access_token.to_string())
-            }
+    pub async fn access_token(&self) -> Result<AccessToken, GetAccessTokenError> {
+        let access_token = self.access_token.read().await.clone();
+        match access_token {
+            Some(access_token) if access_token.expires_at > Utc::now() => Ok(access_token),
             _ => {
-                let jwt_token = self.jwt_token()?;
-                let token = match self.exchange_jwt_token_for_access_token(jwt_token).await {
-                    Ok(token) => token,
-                    Err(err) => return Err(err),
-                };
-
-                let expires_at = Utc::now().timestamp() as u64 + token.expires_in - 30;
-
-                self.access_token = Some(token.bearer_token());
-                self.expires_at = Some(expires_at);
-
-                Ok(token.bearer_token())
+                let new_token = self.get_fresh_access_token().await?;
+                *self.access_token.write().await = Some(new_token.clone());
+                Ok(new_token)
             }
         }
     }
 
-    async fn exchange_jwt_token_for_access_token(
-        &mut self,
-        jwt_token: jwt::JwtToken,
-    ) -> Result<Token> {
-        let req_builder = self.http_client.post(jwt_token.token_uri()).form(&[
-            ("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer"),
-            ("assertion", &jwt_token.to_string()?),
-        ]);
+    async fn get_fresh_access_token(&self) -> Result<AccessToken, GetAccessTokenError> {
+        #[derive(Debug, Deserialize)]
+        pub struct TokenResponse {
+            token_type: String,
+            access_token: String,
+            expires_in: i64,
+        }
 
-        let res = match req_builder.send().await {
-            Ok(resp) => resp,
-            Err(err) => return Err(ServiceAccountError::HttpReqwest(err)),
-        };
+        let response = self
+            .http_client
+            .post(self.jwt_token.token_uri())
+            .form(&[
+                ("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer"),
+                ("assertion", &self.jwt_token.sign()?),
+            ])
+            .send()
+            .await
+            .map_err(GetAccessTokenError::HttpRequest)?;
 
-        let token = match res.json::<Token>().await {
-            Ok(token) => token,
-            Err(err) => return Err(ServiceAccountError::HttpReqwest(err)),
-        };
+        if !response.status().is_success() {
+            return Err(GetAccessTokenError::HttpRequestUnsuccessful(
+                response.status(),
+                response.text().await,
+            ));
+        }
 
-        Ok(token)
+        let json = response
+            .json::<TokenResponse>()
+            .await
+            .map_err(GetAccessTokenError::HttpJson)?;
+
+        if json.token_type != "Bearer" {
+            return Err(GetAccessTokenError::AccessTokenNotBearer(json.token_type));
+        }
+
+        // Account for clock skew or time to receive or process the response
+        const LEEWAY: Duration = Duration::seconds(30);
+
+        let expires_at = Utc::now() + Duration::seconds(json.expires_in) - LEEWAY;
+
+        Ok(AccessToken {
+            bearer_token: json.access_token,
+            expires_at,
+        })
+    }
+}
+
+pub struct ServiceAccountBuilder {
+    http_client: Option<HttpClient>,
+    key: Option<ServiceAccountKey>,
+    scopes: Option<String>,
+    user_email: Option<String>,
+}
+
+impl ServiceAccountBuilder {
+    pub fn new() -> Self {
+        Self {
+            http_client: None,
+            key: None,
+            scopes: None,
+            user_email: None,
+        }
     }
 
-    fn jwt_token(&self) -> Result<jwt::JwtToken> {
-        let token = jwt::JwtToken::from_file(&self.key_path)?;
+    /// Panics if key is not provided
+    pub fn build(self) -> Result<ServiceAccount, ServiceAccountBuilderError> {
+        let key = self.key.expect("Key required");
+        let jwt_token =
+            jwt::JwtTokenSigner::from_key(key, self.scopes.unwrap_or_default(), self.user_email)?;
+        Ok(ServiceAccount {
+            http_client: self.http_client.unwrap_or_default(),
+            jwt_token,
+            access_token: Arc::new(RwLock::new(None)),
+        })
+    }
 
-        Ok(match self.user_email {
-            Some(ref user_email) => token.sub(user_email.to_string()),
-            None => token,
-        }
-        .scope(self.scopes.clone()))
+    pub fn http_client(mut self, http_client: HttpClient) -> Self {
+        self.http_client = Some(http_client);
+        self
+    }
+
+    pub fn key(mut self, key: ServiceAccountKey) -> Self {
+        self.key = Some(key);
+        self
+    }
+
+    pub fn scopes(mut self, scopes: Vec<&str>) -> Self {
+        self.scopes = Some(scopes.join(" "));
+        self
+    }
+
+    pub fn user_email<S: Into<String>>(mut self, user_email: S) -> Self {
+        self.user_email = Some(user_email.into());
+        self
+    }
+}
+
+impl Default for ServiceAccountBuilder {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -118,25 +169,28 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn test_access_token() {
+    async fn test_access_token_cache() {
         let scopes = vec!["https://www.googleapis.com/auth/drive"];
         let key_path = "test_fixtures/service-account-key.json";
-        let mut service_account = ServiceAccount::from_file(key_path, scopes);
+        let service_account = ServiceAccount::from_file(key_path)
+            .unwrap()
+            .scopes(scopes)
+            .build()
+            .unwrap();
 
-        // TODO: fix this test - make sure we can run an integration test
-        // let access_token = service_account.access_token();
-        // assert!(access_token.is_ok());
-        // assert!(!access_token.unwrap().is_empty());
-
-        service_account.access_token = Some("test_access_token".to_string());
-
-        let expires_at = Utc::now().timestamp() as u64 + 3600;
-        service_account.expires_at = Some(expires_at);
+        let expires_at = Utc::now() + Duration::seconds(3600);
+        *service_account.access_token.write().await = Some(AccessToken {
+            bearer_token: "test_access_token".to_string(),
+            expires_at,
+        });
 
         assert_eq!(
-            service_account.access_token().await.unwrap(),
+            service_account.access_token().await.unwrap().bearer_token,
             "test_access_token"
         );
-        assert_eq!(service_account.expires_at.unwrap(), expires_at);
+        assert_eq!(
+            service_account.access_token().await.unwrap().expires_at,
+            expires_at
+        );
     }
 }

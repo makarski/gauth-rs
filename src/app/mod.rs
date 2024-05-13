@@ -90,7 +90,7 @@ impl Auth {
 
     /// App_name can be used to override the default app name
     pub fn app_name(mut self, app_name: &str) -> Self {
-        self.app_name = app_name.to_owned();
+        app_name.clone_into(&mut self.app_name);
         self
     }
 
@@ -260,7 +260,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_access_token_success() {
-        let mut google = mockito::Server::new();
+        let mut google = mockito::Server::new_async().await;
         let google_host = google.url();
 
         google

@@ -11,7 +11,7 @@ The library supports the following Google Auth flows:
 
 ```toml
 [dependencies]
-gauth = "0.8"
+gauth = "0.9"
 ```
 
 #### OAuth2
@@ -45,7 +45,7 @@ It is also possible to make a **blocking call** to retrieve an access token. Thi
 
 ```
 [dependencies]
-gauth = { version = "0.8", features = ["app-blocking"] }
+gauth = { version = "0.9", features = ["app-blocking"] }
 ```
 
 ```rust,no_run
@@ -123,7 +123,7 @@ To resolve this, we adopted an experimental approach by developing a `token_prov
 
 ```
 [dependencies]
-gauth = { version = "0.8", features = ["token-watcher"] }
+gauth = { version = "0.9", features = ["token-watcher"] }
 ```
 
 ```rust,no_run
