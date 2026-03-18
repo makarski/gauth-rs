@@ -4,6 +4,7 @@ name = "gauth"
 version = "0.9.0"
 authors = ["Simon Makarski <code@makarski.dev>"]
 edition = "2024"
+rust-version = "1.85"
 license = "MIT OR Apache-2.0"
 readme = "README.md"
 repository = "https://github.com/makarski/gauth-rs"

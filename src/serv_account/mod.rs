@@ -7,10 +7,19 @@ use self::errors::ServiceAccountError;
 pub(crate) mod errors;
 mod jwt;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 enum KeySource {
     File(String),
     Bytes(Vec<u8>),
+}
+
+impl std::fmt::Debug for KeySource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            KeySource::File(path) => f.debug_tuple("File").field(path).finish(),
+            KeySource::Bytes(b) => write!(f, "Bytes({} bytes)", b.len()),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -221,15 +230,17 @@ mod tests {
 
     #[tokio::test]
     async fn expired_token_triggers_refresh_attempt() {
+        // Use invalid key bytes so jwt_token() fails deterministically
+        // without making any network request.
+        let bad_key = br#"{"type":"service_account","project_id":"p","private_key_id":"k","private_key":"not-a-pem","client_email":"a@b.iam.gserviceaccount.com","client_id":"1","auth_uri":"https://accounts.google.com/o/oauth2/auth","token_uri":"https://oauth2.googleapis.com/token","auth_provider_x509_cert_url":"https://www.googleapis.com/oauth2/v1/certs","client_x509_cert_url":"https://www.googleapis.com/robot/v1/metadata/x509/a","universe_domain":"googleapis.com"}"#;
         let scopes = vec!["https://www.googleapis.com/auth/drive"];
-        let mut sa = ServiceAccount::from_file(KEY_PATH, scopes);
+        let mut sa = ServiceAccount::from_bytes(bad_key, scopes);
 
         sa.access_token = Some("stale_token".to_string());
         sa.expires_at = Some(0); // expired in 1970
 
-        // access_token() should try to exchange a new JWT, which fails
-        // because there's no real Google endpoint — but it proves the
-        // cached token was NOT returned.
+        // access_token() sees the expired cache, calls jwt_token() which
+        // fails on the invalid private key — no network involved.
         let result = sa.access_token().await;
         assert!(
             result.is_err(),
