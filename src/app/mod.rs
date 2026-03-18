@@ -269,7 +269,10 @@ mod tests {
             .with_body(r#"{"access_token":"access_token","expires_in":3599,"refresh_token":"refresh_token","scope":"https://www.googleapis.com/auth/drive","token_type":"Bearer"}"#)
             .create();
 
-        let consent_uri = format!("{}/o/oauth2/auth?client_id=client_id&response_type=code&redirect_uri=urn%3Aietf%3Awg%3Aoauth%3A2.0%3Aoob&include_granted_scopes=true&scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fdrive&access_type=offline&state=pass-through+value", google_host);
+        let consent_uri = format!(
+            "{}/o/oauth2/auth?client_id=client_id&response_type=code&redirect_uri=urn%3Aietf%3Awg%3Aoauth%3A2.0%3Aoob&include_granted_scopes=true&scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fdrive&access_type=offline&state=pass-through+value",
+            google_host
+        );
 
         let expected_consent_uri = consent_uri.clone();
         let auth_handler = move |auth_consent_uri: String| -> StdResult<String, AnyError> {
@@ -277,7 +280,8 @@ mod tests {
             Ok("auth_code".to_owned())
         };
 
-        env::set_var(TOKEN_DIR, "./tmp/gauth_app");
+        // SAFETY: single-threaded test, no other code depends on this var
+        unsafe { env::set_var(TOKEN_DIR, "./tmp/gauth_app") };
 
         let auth = Auth {
             app_name: "gauth_app".to_owned(),
@@ -300,6 +304,7 @@ mod tests {
 
         let token = auth.access_token().await.unwrap();
         assert_eq!(token, "Bearer access_token");
-        env::remove_var(TOKEN_DIR);
+        // SAFETY: single-threaded test, no other code depends on this var
+        unsafe { env::remove_var(TOKEN_DIR) };
     }
 }

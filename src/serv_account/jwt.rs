@@ -24,17 +24,22 @@ struct JwtPayload {
     iat: u64,
 }
 
-use base64::{engine::general_purpose, Engine as _};
+use base64::{Engine as _, engine::general_purpose};
 use ring::{rand, signature};
 use serde_derive::Deserialize;
 
 impl JwtToken {
     /// Creates a new JWT token from a service account key file
     pub fn from_file(key_path: &str) -> Result<Self> {
-        let private_key_content = std::fs::read(key_path)
+        let bytes = std::fs::read(key_path)
             .map_err(|err| ServiceAccountError::ReadKey(format!("{}: {}", err, key_path)))?;
 
-        let key_data = serde_json::from_slice::<ServiceAccountKey>(&private_key_content)?;
+        Self::from_bytes(&bytes)
+    }
+
+    /// Creates a new JWT token from raw service account key JSON bytes
+    pub fn from_bytes(key_json: &[u8]) -> Result<Self> {
+        let key_data = serde_json::from_slice::<ServiceAccountKey>(key_json)?;
 
         let iat = chrono::Utc::now().timestamp() as u64;
         let exp = iat + 3600;
@@ -145,10 +150,7 @@ mod tests {
 
     const SERVICE_ACCOUNT_KEY_PATH: &str = "test_fixtures/service-account-key.json";
 
-    #[test]
-    fn test_jwt_token() {
-        let mut token = JwtToken::from_file(SERVICE_ACCOUNT_KEY_PATH).unwrap();
-
+    fn assert_jwt_fields(token: &JwtToken) {
         assert_eq!(token.header.alg, "RS256");
         assert_eq!(token.header.typ, "JWT");
         assert!(token.payload.iss.contains("iam.gserviceaccount.com"));
@@ -157,6 +159,12 @@ mod tests {
         assert_eq!(token.payload.aud, "https://oauth2.googleapis.com/token");
         assert!(token.payload.exp > 0);
         assert_eq!(token.payload.iat, token.payload.exp - 3600);
+    }
+
+    #[test]
+    fn test_jwt_token() {
+        let mut token = JwtToken::from_file(SERVICE_ACCOUNT_KEY_PATH).unwrap();
+        assert_jwt_fields(&token);
 
         token = token
             .sub(String::from("some@email.domain"))
@@ -164,6 +172,13 @@ mod tests {
 
         assert_eq!(token.payload.sub, Some(String::from("some@email.domain")));
         assert_eq!(token.payload.scope, "test_scope1 test_scope2 test_scope3");
+    }
+
+    #[test]
+    fn test_jwt_token_from_bytes() {
+        let bytes = std::fs::read(SERVICE_ACCOUNT_KEY_PATH).unwrap();
+        let token = JwtToken::from_bytes(&bytes).unwrap();
+        assert_jwt_fields(&token);
     }
 
     #[test]
@@ -190,5 +205,77 @@ mod tests {
             !token_string.unwrap().is_empty(),
             "token string is not empty"
         );
+    }
+
+    #[test]
+    fn from_file_nonexistent_returns_read_key_error() {
+        let err = JwtToken::from_file("/no/such/file.json").unwrap_err();
+        assert!(
+            matches!(err, ServiceAccountError::ReadKey(_)),
+            "expected ReadKey, got: {err:?}"
+        );
+    }
+
+    #[test]
+    fn from_bytes_invalid_json_returns_serde_error() {
+        let err = JwtToken::from_bytes(b"not json").unwrap_err();
+        assert!(
+            matches!(err, ServiceAccountError::SerdeJson(_)),
+            "expected SerdeJson, got: {err:?}"
+        );
+    }
+
+    #[test]
+    fn from_bytes_missing_field_returns_serde_error() {
+        let partial = br#"{"type":"service_account","project_id":"p"}"#;
+        let err = JwtToken::from_bytes(partial).unwrap_err();
+        assert!(matches!(err, ServiceAccountError::SerdeJson(_)));
+    }
+
+    #[test]
+    fn token_uri_matches_fixture() {
+        let token = JwtToken::from_file(SERVICE_ACCOUNT_KEY_PATH).unwrap();
+        assert_eq!(token.token_uri(), "https://oauth2.googleapis.com/token");
+    }
+
+    #[test]
+    fn to_string_produces_three_dot_separated_segments() {
+        let token = JwtToken::from_file(SERVICE_ACCOUNT_KEY_PATH).unwrap();
+        let s = token.to_string().unwrap();
+        assert_eq!(s.split('.').count(), 3, "JWT must have 3 segments");
+    }
+
+    #[test]
+    fn sign_rsa_is_deterministic_length() {
+        let token = JwtToken::from_file(SERVICE_ACCOUNT_KEY_PATH).unwrap();
+        let sig1 = token.sign_rsa("msg_a".into()).unwrap();
+        let sig2 = token.sign_rsa("msg_b".into()).unwrap();
+        assert_eq!(
+            sig1.len(),
+            sig2.len(),
+            "RSA signatures should be same length"
+        );
+        assert_ne!(
+            sig1, sig2,
+            "different messages should produce different signatures"
+        );
+    }
+
+    #[test]
+    fn sub_and_scope_are_chainable() {
+        let token = JwtToken::from_file(SERVICE_ACCOUNT_KEY_PATH)
+            .unwrap()
+            .sub("a@b.com".into())
+            .scope("s1 s2".into());
+
+        let s = token.to_string().unwrap();
+        let payload_b64 = s.split('.').nth(1).unwrap();
+        let payload_bytes = base64::engine::general_purpose::STANDARD
+            .decode(payload_b64)
+            .unwrap();
+        let payload: serde_json::Value = serde_json::from_slice(&payload_bytes).unwrap();
+
+        assert_eq!(payload["sub"], "a@b.com");
+        assert_eq!(payload["scope"], "s1 s2");
     }
 }

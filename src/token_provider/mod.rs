@@ -110,7 +110,7 @@ where
 
         tokio::spawn(async move {
             while let Some(token) = rx.recv().await {
-                log::debug!("received new access token: {}", &token);
+                log::debug!("access token refreshed");
                 let mut cached_token = cached_token.lock().await;
                 *cached_token = token;
             }
