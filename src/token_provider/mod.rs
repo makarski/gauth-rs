@@ -1,8 +1,8 @@
 use async_trait::async_trait;
 use std::sync::Arc;
-use tokio::sync::mpsc::Sender;
 use tokio::sync::Mutex;
-use tokio::time::{interval, sleep, Duration};
+use tokio::sync::mpsc::Sender;
+use tokio::time::{Duration, interval, sleep};
 
 use self::errors::Result;
 
