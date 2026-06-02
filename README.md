@@ -11,16 +11,16 @@ The library supports the following Google Auth flows:
 
 ```toml
 [dependencies]
-gauth = "0.8"
+gauth = "0.10"
 ```
 
 #### OAuth2
 
-1. Create your application in [Google API Console](https://console.developers.google.com/apis/credentials)  
-   a. `Credentials` > `Create credentials` > `OAuth client ID`  
-   b. Set application type to `Other`  
-   c. Enter your application name  
-   d. `Download JSON` configuration of the newly created application  
+1. Create your application in [Google API Console](https://console.developers.google.com/apis/credentials)
+   a. `Credentials` > `Create credentials` > `OAuth client ID`
+   b. Set application type to `Desktop app` (Google retired the `Other` type — `Desktop app` is the modern equivalent for installed-app flows)
+   c. Enter your application name
+   d. `Download JSON` configuration of the newly created application
 
 
 **Client implementation with defaults**
@@ -43,9 +43,9 @@ async fn main() {
 
 It is also possible to make a **blocking call** to retrieve an access token. This may be helpful if we want to wrap the logic into a closure.
 
-```
+```toml
 [dependencies]
-gauth = { version = "0.8", features = ["app-blocking"] }
+gauth = { version = "0.10", features = ["app-blocking"] }
 ```
 
 ```rust,no_run
@@ -83,13 +83,13 @@ async fn main() {
         Ok("auth_code".to_owned())
     };
 
-    let mut auth_client = Auth::from_file(
+    let auth_client = Auth::from_file(
         "my_credentials.json",
         vec!["https://www.googleapis.com/auth/drive"],
     )
-    .unwrap();
-
-    let auth_client = auth_client.app_name("new_name").handler(auth_handler);
+    .unwrap()
+    .app_name("new_name")
+    .handler(auth_handler);
     let token = auth_client.access_token().await.unwrap();
     println!("access token: {}", token);
 }
@@ -115,15 +115,32 @@ async fn access_token() {
 }
 ```
 
+**Loading the key from memory** — useful when the credentials live in a database, an environment variable, or are fetched at runtime (no disk write needed):
+
+```rust,no_run
+use gauth::serv_account::ServiceAccount;
+
+#[tokio::main]
+async fn access_token_from_bytes(key_json: &[u8]) {
+    let scopes = vec!["https://www.googleapis.com/auth/drive"];
+    let mut service_account = ServiceAccount::from_bytes(key_json, scopes);
+    let access_token = service_account.access_token().await.unwrap();
+
+    println!("access token: {}", access_token);
+}
+```
+
+`JwtToken::from_bytes` is also available if you only need the signed JWT and want to drive the token exchange yourself.
+
 ### Bridging sync and async code
 
 The default implementation for acquiring the access token in this library is asynchronous. However, there are scenarios where a synchronous call is necessary. For instance, asynchronous signatures can be cumbersome when used with [tonic middlewares](https://docs.rs/tonic/latest/tonic/service/trait.Interceptor.html). The difficulties of integrating synchronous and asynchronous code are outlined in this [GitHub issue](https://github.com/hyperium/tonic/issues/870).
 
 To resolve this, we adopted an experimental approach by developing a `token_provider` package. This package includes a `Watcher` trait, which has been implemented for both the `app` and `serv_account` packages. Each implementation of this trait spawns a daemon that periodically polls for and caches token updates at specified intervals. As a result, tokens are consistently refreshed through an asynchronous process. The retrieval of tokens is simplified to a synchronous function that reads from the internal cache.
 
-```
+```toml
 [dependencies]
-gauth = { version = "0.8", features = ["token-watcher"] }
+gauth = { version = "0.10", features = ["token-watcher"] }
 ```
 
 ```rust,no_run
