@@ -1,0 +1,42 @@
+name: Coverage
+
+on:
+  pull_request:
+    branches: ["main"]
+
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+
+jobs:
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+
+      # Generate lcov.info (standard format)
+      - name: Generate Coverage
+        run: cargo llvm-cov --all-features --lcov --output-path lcov.info
+
+      # Parses lcov.info and posts a PR comment with the delta
+      - name: Report Coverage
+        uses: romeovs/lcov-reporter-action@v0.3.1
+        with:
+          lcov-file: ./lcov.info
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          filter-changed-files: true
+          delete-old-comments: true
+
+      - name: Enforce Coverage Threshold
+        run: cargo llvm-cov --all-features --fail-under-lines 60

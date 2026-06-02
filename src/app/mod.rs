@@ -260,14 +260,15 @@ mod tests {
 
     #[tokio::test]
     async fn test_access_token_success() {
-        let mut google = mockito::Server::new();
+        let mut google = mockito::Server::new_async().await;
         let google_host = google.url();
 
         google
             .mock("POST", "/token")
             .with_status(200)
             .with_body(r#"{"access_token":"access_token","expires_in":3599,"refresh_token":"refresh_token","scope":"https://www.googleapis.com/auth/drive","token_type":"Bearer"}"#)
-            .create();
+            .create_async()
+            .await;
 
         let consent_uri = format!(
             "{}/o/oauth2/auth?client_id=client_id&response_type=code&redirect_uri=urn%3Aietf%3Awg%3Aoauth%3A2.0%3Aoob&include_granted_scopes=true&scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fdrive&access_type=offline&state=pass-through+value",
