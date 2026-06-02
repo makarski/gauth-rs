@@ -1,3 +1,13 @@
+//! OAuth2 for installed apps (three-legged consent flow).
+//!
+//! See [`Auth`] for the entry point. Construct via [`Auth::from_file`] with
+//! a Google API Console credentials JSON and a list of scopes, then call
+//! [`Auth::access_token`] to retrieve a bearer token. The first call walks
+//! the consent flow (either via the supplied [`AuthHandlerFn`] or the
+//! default `stdin` handler); subsequent calls reuse a cached refresh
+//! token. The token is cached on disk under `$HOME/.{app_name}/` (or
+//! `GAUTH_TOKEN_DIR` if set) and atomically replaced on refresh.
+
 use std::path::PathBuf;
 use std::result::Result as StdResult;
 use std::{env, path};
@@ -130,6 +140,12 @@ impl Auth {
             .map(|token| token.bearer_token())
     }
 
+    /// Synchronous wrapper around [`Self::access_token`], available under the
+    /// `app-blocking` feature. Drives the async call to completion via
+    /// `futures::executor::block_on` — useful when wiring gauth into a
+    /// synchronous integration point (e.g. a tonic interceptor or a sync
+    /// trait impl). Must not be called from inside a tokio runtime; for that
+    /// case, await [`Self::access_token`] directly.
     #[cfg(feature = "app-blocking")]
     pub fn access_token_blocking(&self) -> Result<String> {
         futures::executor::block_on(self.access_token())
@@ -210,7 +226,19 @@ impl Auth {
 
         let token_path = token_dir.join("access_token.json");
         let b = serde_json::to_vec(&token)?;
-        std::fs::write(token_path, b)?;
+
+        // Atomic write: serialise to a sibling tmp file, fsync, then rename.
+        // `rename` on the same filesystem is atomic, so concurrent refreshers
+        // can't observe a half-written `access_token.json`. PID + a process-
+        // local counter keeps the tmp path unique across both processes and
+        // threads.
+        let suffix = TMP_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let tmp_path = token_dir.join(format!(
+            "access_token.json.{}.{}.tmp",
+            std::process::id(),
+            suffix,
+        ));
+        write_then_rename(&tmp_path, &token_path, &b)?;
 
         Ok(token)
     }
@@ -241,6 +269,41 @@ impl Auth {
             Err(_) => false,
         }
     }
+}
+
+static TMP_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Write `bytes` to `tmp_path`, fsync, then atomically rename it to
+/// `final_path`.
+///
+/// `rename` on the same filesystem is atomic, so a concurrent reader either
+/// sees the previous file contents or the new ones — never a half-written
+/// blob. The `sync_all` call before the rename also defends against a
+/// power-loss / crash between write and rename: on filesystems with weak
+/// data-ordering (e.g. ext4 `data=writeback`) the rename's metadata can
+/// otherwise hit disk before the new file's data blocks, leaving
+/// `access_token.json` referencing a file with zero or partial data after
+/// reboot. The tmp file is best-effort removed on any failure so we don't
+/// leak `.tmp` files into the cache dir.
+fn write_then_rename(tmp_path: &PathBuf, final_path: &PathBuf, bytes: &[u8]) -> Result<()> {
+    use std::io::Write;
+
+    let write_and_sync = || -> std::io::Result<()> {
+        let mut file = std::fs::File::create(tmp_path)?;
+        file.write_all(bytes)?;
+        file.sync_all()?;
+        Ok(())
+    };
+
+    if let Err(err) = write_and_sync() {
+        let _ = std::fs::remove_file(tmp_path);
+        return Err(err.into());
+    }
+    if let Err(err) = std::fs::rename(tmp_path, final_path) {
+        let _ = std::fs::remove_file(tmp_path);
+        return Err(err.into());
+    }
+    Ok(())
 }
 
 fn default_auth_handler(consent_uri: String) -> StdResult<String, AnyError> {

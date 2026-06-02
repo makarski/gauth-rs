@@ -1,3 +1,14 @@
+//! Service-account JWT-bearer flow for server-to-server auth.
+//!
+//! Construct a [`ServiceAccount`] from a Google-issued service account JSON
+//! key (via [`ServiceAccount::from_file`] for a path or
+//! [`ServiceAccount::from_bytes`] when the key is loaded from a database or
+//! environment variable), then call [`ServiceAccount::access_token`] to
+//! obtain a bearer token. Tokens are cached in memory on the instance and
+//! refreshed automatically before expiry. Optionally set
+//! [`ServiceAccount::user_email`] to impersonate a workspace user for
+//! domain-wide delegation.
+
 use chrono::Utc;
 use errors::Result;
 use reqwest::Client as HttpClient;
@@ -22,6 +33,12 @@ impl std::fmt::Debug for KeySource {
     }
 }
 
+/// Google service-account credentials with a cached access token.
+///
+/// Construct via [`Self::from_file`] or [`Self::from_bytes`], optionally
+/// chain [`Self::user_email`] to impersonate a workspace user, then call
+/// [`Self::access_token`] to retrieve a bearer token. The token is cached
+/// on the instance and refreshed automatically once it expires.
 #[derive(Debug, Clone)]
 pub struct ServiceAccount {
     scopes: String,
