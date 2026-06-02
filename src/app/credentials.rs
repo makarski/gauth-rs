@@ -71,3 +71,78 @@ fn auth_code_uri(credentials: &OauthCredentials, scope: &str) -> Result<url::Url
     uri.query_pairs_mut().finish();
     Ok(uri)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    const FIXTURE: &str = "test_fixtures/oauth-credentials.json";
+
+    #[test]
+    fn read_oauth_config_parses_installed_app_schema() {
+        let cfg = read_oauth_config(Path::new(FIXTURE)).unwrap();
+        assert_eq!(
+            cfg.installed.client_id,
+            "test-client-id.apps.googleusercontent.com"
+        );
+        assert_eq!(cfg.installed.client_secret, "test-client-secret");
+        assert_eq!(
+            cfg.installed.token_uri,
+            "https://oauth2.googleapis.com/token"
+        );
+        assert_eq!(cfg.installed.redirect_uris.len(), 2);
+        assert_eq!(cfg.installed.redirect_uris[0], "urn:ietf:wg:oauth:2.0:oob");
+    }
+
+    #[test]
+    fn read_oauth_config_missing_file_errors() {
+        let err = read_oauth_config(Path::new("/no/such/file.json")).unwrap_err();
+        assert!(
+            matches!(err, AuthError::IOError(_)),
+            "expected IoError, got: {err:?}"
+        );
+    }
+
+    #[test]
+    fn redirect_uri_returns_first_when_present() {
+        let creds = OauthCredentials {
+            client_id: "id".into(),
+            project_id: "p".into(),
+            auth_uri: "https://example.com/auth".into(),
+            token_uri: "https://example.com/token".into(),
+            auth_provider_x509_cert_url: "https://example.com/certs".into(),
+            client_secret: "s".into(),
+            redirect_uris: vec!["http://localhost".into(), "http://other".into()],
+        };
+        assert_eq!(creds.redirect_uri().unwrap(), "http://localhost");
+    }
+
+    #[test]
+    fn redirect_uri_empty_errors() {
+        let creds = OauthCredentials {
+            client_id: "id".into(),
+            project_id: "p".into(),
+            auth_uri: "https://example.com/auth".into(),
+            token_uri: "https://example.com/token".into(),
+            auth_provider_x509_cert_url: "https://example.com/certs".into(),
+            client_secret: "s".into(),
+            redirect_uris: vec![],
+        };
+        assert!(matches!(
+            creds.redirect_uri().unwrap_err(),
+            AuthError::RedirectUriCfgError,
+        ));
+    }
+
+    #[test]
+    fn auth_code_uri_contains_scope_and_client_id() {
+        let cfg = read_oauth_config(Path::new(FIXTURE)).unwrap();
+        let uri =
+            auth_code_uri_str(&cfg.installed, "https://www.googleapis.com/auth/drive").unwrap();
+        assert!(uri.contains("client_id=test-client-id"));
+        assert!(uri.contains("scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fdrive"));
+        assert!(uri.contains("response_type=code"));
+        assert!(uri.contains("access_type=offline"));
+    }
+}
