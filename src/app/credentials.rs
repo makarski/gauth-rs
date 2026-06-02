@@ -19,9 +19,14 @@ pub struct OauthConfig {
 #[derive(Deserialize, Debug)]
 pub struct OauthCredentials {
     pub client_id: String,
+    // Present in the credentials.json schema; not consumed today but kept
+    // on the struct so the layout matches the file. `expect` over `allow`
+    // so the suppression auto-fires if a future feature starts reading these.
+    #[expect(dead_code)]
     pub project_id: String,
     pub auth_uri: String,
     pub token_uri: String,
+    #[expect(dead_code)]
     pub auth_provider_x509_cert_url: String,
     pub client_secret: String,
     pub redirect_uris: Vec<String>,

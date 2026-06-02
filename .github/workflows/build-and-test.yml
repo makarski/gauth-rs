@@ -1,0 +1,28 @@
+name: Build and Test
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - name: Rustfmt
+        run: |
+          rustup component add rustfmt
+          cargo fmt --all -- --check
+      - name: Clippy
+        run: |
+          rustup component add clippy
+          cargo clippy --all-features --all-targets -- -D warnings
+      - name: Run tests
+        run: cargo test --all-features
