@@ -1,7 +1,7 @@
 use std::result::Result as StdResult;
 use thiserror::Error;
-use tokio::sync::mpsc::error::SendError;
 use tokio::sync::TryLockError;
+use tokio::sync::mpsc::error::SendError;
 
 use crate::serv_account::errors::ServiceAccountError;
 

@@ -114,7 +114,7 @@ impl JwtToken {
 
         // Sign the message, using PKCS#1 v1.5 padding and the SHA256 digest algorithm.
         let rng = rand::SystemRandom::new();
-        let mut signature = vec![0; key_pair.public_modulus_len()];
+        let mut signature = vec![0; key_pair.public().modulus_len()];
         key_pair
             .sign(
                 &signature::RSA_PKCS1_SHA256,

@@ -1,5 +1,5 @@
 //! `RUST_LOG=DEBUG cargo run --example async_token_provider --features token-watcher path/to/service-account-key.json` to run the example
-use tokio::time::{sleep, Duration};
+use tokio::time::{Duration, sleep};
 
 use gauth::serv_account::ServiceAccount;
 use gauth::token_provider::AsyncTokenProvider;
