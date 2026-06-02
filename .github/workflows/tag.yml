@@ -29,7 +29,9 @@ jobs:
       - name: Check if tag exists
         id: check
         run: |
-          if git rev-parse "v${{ steps.version.outputs.value }}" >/dev/null 2>&1; then
+          # Resolve via the full ref so a branch or commit sharing the v* name
+          # can't make us skip tagging.
+          if git rev-parse --verify "refs/tags/v${{ steps.version.outputs.value }}" >/dev/null 2>&1; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"

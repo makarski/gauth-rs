@@ -180,10 +180,33 @@ mod tests {
         let jwt_bytes = from_bytes.jwt_token().unwrap();
 
         assert_eq!(jwt_file.token_uri(), jwt_bytes.token_uri());
-        assert_eq!(
-            jwt_file.to_string().unwrap(),
-            jwt_bytes.to_string().unwrap()
-        );
+
+        // The encoded JWT embeds iat/exp from `Utc::now()` at construction;
+        // comparing `to_string()` directly is racy on slow runners where the
+        // two constructions can straddle a second boundary. Compare the
+        // schema-fixed fields instead — that's what "produce same fields"
+        // is actually testing.
+        let (header_file, payload_file) = decode_jwt_segments(&jwt_file.to_string().unwrap());
+        let (header_bytes, payload_bytes) = decode_jwt_segments(&jwt_bytes.to_string().unwrap());
+        assert_eq!(header_file, header_bytes);
+        for field in ["iss", "sub", "scope", "aud"] {
+            assert_eq!(
+                payload_file.get(field),
+                payload_bytes.get(field),
+                "field {field} should match across constructors",
+            );
+        }
+    }
+
+    fn decode_jwt_segments(token: &str) -> (serde_json::Value, serde_json::Value) {
+        let mut parts = token.split('.');
+        let header_b64 = parts.next().expect("JWT must have a header segment");
+        let payload_b64 = parts.next().expect("JWT must have a payload segment");
+        let decode = |s: &str| -> serde_json::Value {
+            let bytes = base64::engine::general_purpose::STANDARD.decode(s).unwrap();
+            serde_json::from_slice(&bytes).unwrap()
+        };
+        (decode(header_b64), decode(payload_b64))
     }
 
     #[test]
