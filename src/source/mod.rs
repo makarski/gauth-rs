@@ -233,8 +233,7 @@ mod tests {
         let err = source
             .token()
             .await
-            .err()
-            .expect("must not fabricate a token");
+            .expect_err("must not fabricate a token");
         assert!(err.to_string().contains("issuer unavailable"));
     }
 

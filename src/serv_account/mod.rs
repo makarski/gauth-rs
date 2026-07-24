@@ -152,6 +152,21 @@ impl ServiceAccount {
     }
 }
 
+#[cfg(feature = "source")]
+#[async_trait::async_trait]
+impl crate::source::TokenSource for ServiceAccount {
+    async fn fetch(&self) -> crate::source::Result<crate::source::Token> {
+        let jwt_token = self.jwt_token()?;
+        let token = self.exchange_jwt_token_for_access_token(jwt_token).await?;
+        Ok(crate::source::Token {
+            expires_at: std::time::Instant::now()
+                + std::time::Duration::from_secs(token.expires_in),
+            value: token.access_token,
+            token_type: token.token_type,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -307,20 +322,5 @@ mod tests {
     fn empty_scopes_produce_empty_string() {
         let sa = ServiceAccount::from_file(KEY_PATH, vec![]);
         assert_eq!(sa.scopes, "");
-    }
-}
-
-#[cfg(feature = "source")]
-#[async_trait::async_trait]
-impl crate::source::TokenSource for ServiceAccount {
-    async fn fetch(&self) -> crate::source::Result<crate::source::Token> {
-        let jwt_token = self.jwt_token()?;
-        let token = self.exchange_jwt_token_for_access_token(jwt_token).await?;
-        Ok(crate::source::Token {
-            expires_at: std::time::Instant::now()
-                + std::time::Duration::from_secs(token.expires_in),
-            value: token.access_token,
-            token_type: token.token_type,
-        })
     }
 }
