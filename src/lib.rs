@@ -26,6 +26,8 @@
 #![deny(missing_docs)]
 
 pub mod app;
+#[cfg(feature = "source")]
+pub mod metadata;
 pub mod serv_account;
 #[cfg(feature = "source")]
 pub mod source;

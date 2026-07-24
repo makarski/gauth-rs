@@ -12,6 +12,10 @@ pub enum SourceError {
     #[error("service account error: {0}")]
     ServiceAccount(#[from] ServiceAccountError),
 
+    /// Metadata-server fetch failed.
+    #[error("metadata server error: {0}")]
+    Metadata(#[from] crate::metadata::errors::MetadataError),
+
     /// Failure from a source implemented outside this crate.
     #[error("token fetch failed: {0}")]
     Custom(#[from] Box<dyn std::error::Error + Send + Sync>),

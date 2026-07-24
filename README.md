@@ -159,6 +159,26 @@ let token = source.token().await?;
 let header = token.authorization_header(); // "Bearer …"
 ```
 
+#### Workload Identity / metadata server
+
+On Google compute platforms (GCE, GKE with Workload Identity, Cloud Run)
+the metadata server issues tokens for the workload's service account —
+no key file involved:
+
+```rust,no_run
+use gauth::metadata::MetadataTokenSource;
+use gauth::source::CachingTokenSource;
+
+let source = CachingTokenSource::new(
+    MetadataTokenSource::new()
+        .with_scopes(["https://www.googleapis.com/auth/pubsub"]),
+);
+
+let token = source.token().await?;
+```
+
+The metadata host honors the `GCE_METADATA_HOST` environment variable.
+
 ### Bridging sync and async code (deprecated)
 
 > **Deprecated since 0.11:** prefer the `source` API above.
