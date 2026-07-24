@@ -1,5 +1,9 @@
 //! Background token refresher with a synchronous read accessor.
 //!
+//! **Deprecated since 0.11:** prefer [`crate::source`] (feature `source`),
+//! which is expiry-aware, has no empty-string cold state, and needs no
+//! background task. This module will be removed in 0.12.
+//!
 //! Wrap any [`TokenProvider`] in an [`AsyncTokenProvider`] to spawn a daemon
 //! that calls `access_token` on the given interval, retries with
 //! exponential backoff on failure, and caches the latest value behind a
@@ -11,6 +15,7 @@
 //! and [`crate::app::Auth`] out of the box; downstream types can add their
 //! own impls.
 
+#![allow(deprecated)]
 use async_trait::async_trait;
 use std::sync::Arc;
 use tokio::sync::Mutex;
