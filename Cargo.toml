@@ -36,3 +36,5 @@ env_logger = "0.11"
 [features]
 app-blocking = ["dep:futures"]
 token-watcher = ["dep:tokio", "dep:async-trait", "dep:log"]
+# v2 token API (`gauth::source`): expiry-aware caching, runtime-agnostic.
+source = ["dep:async-trait", "dep:futures"]

@@ -132,7 +132,39 @@ async fn access_token_from_bytes(key_json: &[u8]) {
 
 `JwtToken::from_bytes` is also available if you only need the signed JWT and want to drive the token exchange yourself.
 
-### Bridging sync and async code
+### Token sources with expiry-aware caching (recommended)
+
+The `source` feature provides the v2 token API: a `TokenSource` fetches
+one fresh token, and `CachingTokenSource` adds expiry-aware caching with
+single-flight refresh — no background task, no empty-string cold reads,
+and no runtime coupling (works on any executor).
+
+```toml
+[dependencies]
+gauth = { version = "0.11", features = ["source"] }
+```
+
+```rust,no_run
+use gauth::serv_account::ServiceAccount;
+use gauth::source::CachingTokenSource;
+
+let account = ServiceAccount::from_file(
+    "/path/to/key.json",
+    vec!["https://www.googleapis.com/auth/pubsub"],
+);
+let source = CachingTokenSource::new(account);
+
+// Cached while fresh; refreshed inline (single-flight) near expiry.
+let token = source.token().await?;
+let header = token.authorization_header(); // "Bearer …"
+```
+
+### Bridging sync and async code (deprecated)
+
+> **Deprecated since 0.11:** prefer the `source` API above.
+> `AsyncTokenProvider` returns an empty string before its first
+> successful refresh and refreshes on a wall-clock interval rather than
+> token expiry. It will be removed in 0.12.
 
 The default implementation for acquiring the access token in this library is asynchronous. However, there are scenarios where a synchronous call is necessary. For instance, asynchronous signatures can be cumbersome when used with [tonic middlewares](https://docs.rs/tonic/latest/tonic/service/trait.Interceptor.html). The difficulties of integrating synchronous and asynchronous code are outlined in this [GitHub issue](https://github.com/hyperium/tonic/issues/870).
 
